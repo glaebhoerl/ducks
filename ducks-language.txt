@@ -1,0 +1,2055 @@
+# Statically typed equivalent of Lua
+priorities: 1. simplicity 2. expressiveness 3. correctness
+  simpler than Haskell/Scala/OCaml, more correct and faster than JavaScript and Lua
+  prefer undesirably permissive solutions to undesirably complex or undesirably restrictive ones(?)
+  a statically typed language to beat dynamically typed languages
+  useful for throwing something together quickly, gluing things together
+  embeddable, extensible
+question "what can we do without", make painful cuts/compromises for simplicity
+  bloody-minded simplicity... coarse syntactic restrictions?
+simplicity is not so simple:
+ * simplicity of syntax
+ * simplicity of specification
+ * simplicity of implementation
+ * simplicity of comprehension
+ * simplicity of programs
+simplicity also means deciding which (well-known) problems to keep and live with?
+comprehension: should not keep people with background in mainstream languages from being able to even
+  minimize the number of variables and/or classes of variables
+  variables are confusing!! (see: "too many type variables aaaagh" syndrome in Haskell)
+    type variables and 'normal' variables are plenty difficult enough...
+    they are confusing because they require keeping contexts
+    and humans are bad at keeping track of contexts in their heads (small short-term memory)
+  minimize number of things to be explicitly polymorphic over
+  once you have explicit effect variables and lifetime variables and so on and so forth you have lost
+favor expressiveness and simplicity over incremental performance diffs... but stay mindful of major performance diffs
+  performance goal is to be decent / respectable
+  willing to sacrifice performance for expressiveness, willing to sacrifice expressiveness for simplicity(?)
+  performance is frequently sacrificed, but it is sacrificed *consciously*
+minimize bureaucracy and ceremony (coordination costs)
+minimize duplication within the language (term level vs. type level vs. module level vs. ...)
+implementation: should be simple enough to re-implement several different ways / in several different languages?
+other requirements: good FFI
+prefer implicit interfaces/contracts to explicit
+  deprecate global declarations which have to be explicitly imported/depended on/declared/coordinated/organized around
+strictly evaluated, TCE
+type inference: Hindley-Milner? bidirectional?
+  do we require top-level type signatures, or not?
+what should it be called? RustScript? Duck! but there is already a Duck... then Ducks!
+  's' stands for: simple, static, structural, "scale invariance", ...
+  Duckslang
+  Ducks - a language for humans
+  "Ducks are a simple, statically duck-typed pure imperative+functional programming language..."
+  "powered by Ducks"
+  "can be extended using Ducks"
+basics:
+ * structural types: anonymous records, polymorphic variants, pattern matching
+ * functions (closures)
+ * equirecursive types?
+ * type aliases
+structural types
+  ~ dynamic langs: variants ~ types (tags), records ~ objects... what about methods??
+    notably, methods in dynamic langs (like Rust) only consider the type of `self`
+      are methods really just record fields of function type?
+      plus they get the record itself passed as a parameter
+        is this desirable? Evan Czapliki says not. but why?
+        as long as the record is immutable... (but then is it still useful?)
+    "structural" checking means "has the same name and a compatible type"
+    how can we apply this to functions? should we?
+      multidispatch doesn't feel like quite the same thing
+      with structural matching of sums/product the meaning is unambiguous, and we accept or reject it
+      multidispatch chooses from among multiple different meanings based on the type
+  are function params strictly by-name, or do we also have positional ones??
+    simpler if everything is by-name, but not so convenient to use...?
+    if it's positional, curried or uncurried?
+    if it's curried, then partial application like ML/Haskell?
+      this is simple and ergonomic, but unfamiliar
+    (if it's not curried, then we would want arity polymorphism...??)
+    just allow numbers as labels?? like Rust tuples, Lua tables, JS objects
+      the number part can have a special representation?
+      how would this show up in the types? can name and number labels be mixed?
+      positional always comes first: (Int, Bool, x: Foo, y: Bar)
+        with casing distinction making it unambiguous
+        but how does this work in function definitions? want to bind positional arguments to names too!
+          add(Integer, Integer): Integer = add.0 + add.1
+          but does this not conflict with (co)recursive calls...??
+        and how does this not conflict with punning??
+          (foo, bar baz) means (foo foo, bar baz) or (0 foo, bar baz)??
+      is this the equivalent of Morrow/Elm's scoped labels except nominal fields are scoped anonymous labels??
+        so adding nominal fields just "appends to the end", like you would expect
+        structure is actually record-of-tuples...?
+        so you have .0, .1, ..., .0x, .1x, ... .0y, .1y, etc.
+          .x always selects the outermost
+        is there corresponding structure for polymorphic variants??
+          of course: Foo | Foo
+          should translate to 0Foo | 1Foo
+        this restores algebraicity!!
+      is there any we can also integrate arrays into this system?? (~ Lua tables)
+    what functions are there where named arguments don't make sense?
+      add(this 5, that 6)
+      combine(this [1], that [2])
+      these both have uniform types... should they instead be [5, 6].add(), [[1], [2]].combine()?
+        might we allow functions that take arrays? add[5, 6]
+        but this would probably run into the nonempty / type-level lengths issue...?
+  limited TDNR/static overloading?
+    allow multiple functions with the same name but different argument names
+    when invoking with a record, if there is an unambiguous match on argument names (but not types!), select it
+    (how to manually disambiguate?)
+  do we allow functions to be record-polymorphic in their arguments record?
+    i.e. is `foo(x: Int, y: Int, ...args)` OK?
+    or just `foo(pos: (x: Int, y: Int, ...args))`?
+    interacts with overloading, but we can just be conservative?
+  what about "the usual structural types issues"? (what are they?)
+    name clashes in records: shadowing, like Morrow...?
+  can labels for fields and variants be intermixed? when would you want to?
+    this is probably also "first-class labels"?
+  can we have "column polymorphism"? so `Yes(T) | No` is a subtype of `Yes | No`?
+  all variant contents are records, VS. all record field contents are variants, VS. both?
+    can't have both, because then there is no room for primitive types
+    all variants hold records, but not vice versa, seems reasonable
+    can then do record-subtyping between same-variants-holding-different-types
+    trivial case is empty record
+    variants-as-constructors-are-like-functions also works out
+    also things like allowing `.x` notation if all variants contain a `.x` field
+  can we do refinement type ish stuff where the type system knows which possibilities have been eliminated?
+    fn foobar(x: Foo|Bar) { ... }
+    fn foobarbaz(x: Foo|Bar|Baz) {
+        match x {
+            Baz => ...,
+            y => foobar(y), // OK
+            _ => foobar(x)  // this too?
+        }
+    }
+    if we have these kind of capabilities, we can also do ranged integers??
+      `foo: 1..10`
+      (yet another syntactic demand on .., ...)
+      slippery slope: leads to type-level abstraction over numbers, `foo: N..M`, arrays/containers constrained by size, ...?
+        (not so simple any more...)
+        is this sort of thing a better fit for Rust than for us? if so why?
+      also refinement types like even, odd, not 0, prime, ... whatever functions
+        how can the type system "know about" things like `n > 12` and so on?
+        in dependently typed languages this is a laborious induction... in refinement types is it different?
+    what about vertically composed lambdas?
+  what about Dani's idea that a function-with-named-arguments is just an `Fn` impl on a `struct` with those fields?
+    but then what actually is the `Fn` trait?? and what about methods, other traits...?
+    type Area = (x: Integer, y: Integer)
+    let area: Area;
+    area.x = 9;
+    area.y = 10;
+    return area()
+  should area(x 10, y 9) and (x 10, y 9).area() and (x 10).area(y 9) be equivalent?
+    does this clash with what-if-first-arg-is-itself-a-record?
+     * foo.wibble(bar 2)
+       * wibble(this foo, bar 2)
+       * wibble(foo foo, bar 2)
+       * wibble(0 foo, bar 2)
+     * (foo).wibble(bar 2)
+     * (foo 1).wibble(bar 2)
+  "structural types" basically boils down to
+    "variadic" product type (a: X, b: Y, ...)
+    "variadic" sum type Foo(a: X) | Bar | Baz(b: Y, c: Z) | ...
+  what's the kind system like? are `Type`, `Record`, and `Union` separate?
+    how do we restrict functions to taking records? (->): Record -> Type?
+    or is this purely a syntactic restriction in the surface language, and internally (->): Type -> Type?
+      this seems preferable...
+      ...but what about HOFs? how would you write function composition?
+        sort(this: List(T), by: (this: T, that: T) -> Ordering) -> List(T)
+        compose(this: A -> B, that: B -> C) -> A -> C ???
+        compose(this: (A...) -> (B...), that: (B...) -> C) -> (A...) -> C ??
+    we want typedefs to "extend" structural types like
+      type Foo(Rec)  = (x: Int, y: Int, Rec...)
+      type Bar(Enum) = X | Y(Int) | Enum...
+      here Rec and Enum must be a record/enum type, respectively
+        is this reflected in their kind signatures??
+      whereas these create *new* record/union types with the given type as a component:
+      type Foo(T) = (x: Int, y: Int, z: T)
+      type Bar(T) = X | Y(Int) | Z(T)
+    should the type of a record itself be a record containing types??
+      `(id 1, name "john"): (id Int, name String): (id Type, name Type): (id Type, name Type): ...`
+      this works alright(?) for records, but not for e.g. variants? (...does it?)
+        well wouldn't this cause problems anywhere a type is expected and gets a record instead?
+        `(id 1, person (name "john", phone "123")): (id Int, person (name String, phone String)): (id Type, person (name Type, phone Type))`
+      how would this mesh with type-functions (typedefs) also taking records as arguments?
+      I think this doesn't work - `(a Int, b String)` and `(a: Int, b: String)` aren't /and shouldn't be/ the same thing?
+        but maybe you might want to translate between them...?
+  whole program is just a big nested record?
+    works for function defs...
+    what about typedefs??
+    are functions' local variables just record fields too??
+      more specifically/suggestively, are *contexts/environments* just records?
+  only form of abstraction is function closures? (or interface types generally...?)
+    how would interfaces work if there are no nominal types to implement them for?
+    what things can / can't be expressed as just a record of functions?
+      can you express Map/Set, ConcurrentHashTable, PhoneNumber, ...?
+        type Map(K, V) = (get: (key: K) -> V?, update: (key: K, value: V?) -> Map(K, V))
+          what about union, intersection...??
+          and what about (==)??
+        fn newMap(ordering: (K, K) -> Ordering) -> Map(K, V) = {
+            type Tree = Branch(K, V, Tree) | Leaf
+            let empty = Leaf
+            get
+        }
+        type MHashTable(K, V) = (get: (key: K) -> V, set: (key: K, value: V?) -> ())
+  have types and variants share a namespace, with each type having a corresponding variant, so we get type-based unions for free...?
+    but what we have is not actually unions, but sums
+    and we don't actually have "types", just synonyms, apart from the primitive ones?
+  would want to be able to conveniently do "deep updates" / transformations of structural data in a simple/ergonomic way...
+    ...lens-like
+    how could we? can we have lens-like machinery? can we make it less terrifying?
+    (lens relies on Functor/Foldable/Traversable/Applicative/Profunctor/etc. -- what's our approach??)
+    lens relies fundamentally on Functor/Contravariant/Profunctor
+    Functor/Contravariant/Profunctor are fundamentally about co/contravariance
+    co/contravariance we probably want _anyways_ for ergonomic subtyping reasons
+      does this suggest a plan of attack?
+      basically variance is a proposition which has mapping functions as proof
+      instead of "just" doing plain-old subtyping, we produce those mapping functions
+      and for plain-old subtyping, we (pretend to?) invoke them with `upcast`/`id`
+      while the user can invoke them with other things
+        (what do these mapping functions live? what do they look like? how can they be called??)
+      Functor and co. are uniquely determined from the type ("property-like" or what was the term?) and thus "automatically derivable", so it makes sense for them to live in the language instead of the library
+        likewise Foldable/Traversable... which things are Functors but not Foldable, Traversable? (and Unfoldable/Distributive?)
+        and what about Conor's Matchable? (Unifiable?)
+        what other type classes are property-like?
+          Functor, Contravariant, Bifunctor, and Profunctor are clearly property-like (just variance)
+          Applicative clearly isn't(?) e.g. `[]` vs. `ZipList`
+          `Foldable` and `Traversable` can be derived, so it seems like they are property-like
+          OTOH, traversals have an arbitrary choice of order for example, and `lens` has a separate `Traversal` type!! (but no e.g. `Mapping`)(?)
+          all of these are fundamentally properties of _functors_
+          so look at how they are or aren't lifted over sums, products, etc.
+        in Haskell these are derived based on the "shape" of the type which is made up of certain connectives
+        sums, products, functions... these are OK
+        what about fixpoints (we want equirecursive types)? what about functor composition (we have... what?)?
+      in Haskell, Functor* are over the last 1-2 type arguments... what about here?? we don't have nominal types
+        co/contravariance are over type arguments of types
+        where do we have that? only typedefs??
+          do we have actual type lambdas??? can all of this work there? (and what about HKTs? we don't have type classes, so... still, what about inference?)
+          what does variance correspond to for term lambdas?
+      Functor/Contravariant/Profunctor are OK, but what about subclasses like Choice, Strong, Applicative, Divisible, ...?
+      (and guess we might want Invariant also?)
+        if we want invariant to work for mutable cells, they need to be represented as a getter + a setter fn, or similar
+        how could this work for things like HashTables??
+          is giving up things like efficient union (a) a necessary (b) a sufficient condition?
+      how do you actually get from having functors/contrafunctors/profunctors to lenses/prisms/so on??? how do they arise? (todo understand lens)
+        which are the most important ones (after Lens, Prism, Iso, Traversal), and which structures do they need?
+        `forall p. p s t -> p a b` is Leibniz equality: `s ~ a`, `t ~ b`
+    is there any connection between variance and polarization?
+    `lens` relies on higher-rank types, variances, subtyping, etc. to represent things
+      but what other options are there? which ones can we best support with our type system?
+      there's also the `exists S. T <-> (A, S)` model
+        can this support polymorphic update??
+      what we definitely want are Lenses and Prisms
+      Isos probably fall out if we have both of those
+      Traversals also seem important
+      everything else is a nice-to-have?
+equirecursive types
+  equality of equirecursive /types/ seems ~ equality of coinductive /values/?
+    bisimulation
+    http://www.cs.cornell.edu/courses/cs6110/2014sp/lectures/lec35a.pdf
+    http://www.cs.cornell.edu/courses/cs6110/2014sp/lectures/lec36.pdf
+  equirecursive and refinement types are both related to tree automata??
+  if we have equirecursive types, does that mean infinite types in general are OK?
+    in the cases where we'd get an occurs check error in Haskell, what happens instead?
+    something useful, or a bottom?
+  with values of coinductive types, we must be careful that consumers are productive
+  do equirecursives types (types of coinductive kinds) have consumers??
+  what was the soundness bug GHC had w.r.t. non-converging type instance something or other...?
+primitive types
+ * Integer ("Int"?)
+ * Natural ("Nat"? "UInt"?)
+ * Double ("Float"? "Real"?)
+ * String? ("Bytes" vs. "String" (unicode) vs. "Text" (translated)??)
+ * Char?
+ * Array?
+ * HashTable? HamtMap? OrdMap?
+separate Bytes vs. String vs. Array(T) brings us back to Haskell MonoFunctor-ish issues...
+  `UInt` is basically the same thing as `Bytes`??
+questions / nice to haves:
+  "the problems type classes solve" (principled overloading)
+  mutability / imperative features
+  pure vs. impure (effects)
+  nominal types
+  modules, namespacing
+  abstraction / abstract types
+  arrays, hashes/maps, other efficient data structures
+  laziness / codata
+  refinement types
+  type-level constants? dependent types?
+  polymorphism / generics (subtyping/variance...? higher kinds? polykinds?)
+  exceptions / error handling
+  parallelism / concurrency
+  pattern synonyms? first-class labels? first-class patterns? (prisms...?)
+  macros? regexps? continuations/generators? dynamic typing?
+  resource management, scoping, destructors, linear types...?
+  green threads? efficient IO (libuv)? segmented stacks?
+mutability, imperative features
+  do we want "shared" mutability?
+  if yes, where does the mutability go?
+   * a separate Mutable type, like ML/Haskell (IORef)
+   * on function parameters, like C#
+   * on record fields
+   * on entire records
+  we should support mutable non-espacing mutable variables
+    allow passing them in `mut` args? bit like Rust, but more limited
+      purely syntactic restriction
+      `mut` local variables may only be passed as `mut` parameters
+          let mut x = 9;
+          fn inc(mut n: Integer) { n += 1 }
+          inc(mut x);
+      ...how does this work if function parameters = record fields? would suggest mutable fields in records...
+        `mut foo: T` in a record corresponds to `foo: &mut T` rather than `foo: RefCell<T>`?
+          what restrictions are necessary to make this work?
+          records containing `mut` fields can't be:
+           * returned from functions
+           * captured in closures
+           * passed to row-polymorphic functions hiding the `mut` field
+           * ...?
+          is this enough?
+            what about positive/negative positions in general?
+            is an arg to a HOF function arg OK or not?
+          likewise for `out`? like `mut`, but write-only, and must be written or passed as an out-argument at least once
+    can be aliased freely within the function? is this OK...?
+      or do we add linear types just for this?
+      would this also make the GC simpler? (have a Mutable type ~ RefCell/IORef, which is also atomic?)
+      mutability is purely shallow! so
+    could have `out` parameters likewise
+    (distinction between internally vs. externally mutable args?)
+    can we allow returning them (perhaps as a separate type) with a runtime check to avoid accessing `mut` vars which have escaped their scope?
+      WeakMut or something
+      basically what we need is the function zeroes its local `mut` references before returning?
+        is this sufficient to preserve purity??
+  what do we need to do w.r.t. value restriction??
+    what is the actual source of the problem? what do we need to prevent?
+      something to do with `Mutable(T)` having identity...
+    how/why does Haskell prevent it? how/why does Rust?
+  can't escape the interior mutability / sharing question if we have things like MVector/HashTable...?
+    well, we could just put them all in IO...?
+      also, what about concurrency? how do we make sharing HashTables either thread-safe or illegal?
+    is there any way to do ST-like local mutation and freezing without actually having an ST monad or Rust-like lifetimes and references...?
+      require them to be 'bound' to a mut parameter/field somehow?
+        have a single array type which works specially when bound to a `mut`, and deep-copied when passed as an immutable arg,
+        or separate mutable array type and ... (what was the alternative?)
+      resizeable vecs would be a step too far, though...??
+    which/how many of these do we want/need?
+      Array + HashTable? Or just a Lua-style Table?
+      STM-based stuff?
+  general rule: scope of mutation == scope of copying?
+    if completely shallow - only outermost pointer is mutated - then only the pointer needs to be copied
+    if array/hashtable contents are mutated, need to copy the whole thing
+    can we express this nicely/generally in the syntax/semantics? how much do we want to?
+    `mut [Int]` vs. `mut [mut Int]`? is non-mut `[mut Int]` legal? (should be?)
+    does this work for general types, or only built-in like arrays?
+    (compiler needs to know how to copy (deepseq?), or what...?)
+    when does this become an issue? abstract types, `mut` in negative positions, ...?
+      would be nice if our syntactic `mut` restrictions for non-escaping are the same ones we need here :o)
+      and maybe pass around deepseq/trace/traverse dicts together w/ abstract types? (if we have abstract types)
+      (and/or maybe the GC can help us??)
+    what restrictions do we need to avoid scoping violations?
+      can we allow `mut mut`? what about `global mut mut`?
+      what about `mut`s in return types / negative positions?
+      can we allow the same cases where Rust allows lifetime elision?
+      what's the expressiveness hit if we don't allow these?
+      can code be reformulated to work a different way, or is it more serious?
+      (from a type system perspective, seems like this would bring us into nasty variance-tracking territory...)
+      we could allow captures and introduce `mut fn()`?
+        could/should also have implicit lifetime parameters there...? (~ ST, Rust)
+        (obvs syntactic ambiguity: mut (fn ()) vs. (mut fn)())
+          (but would you ever actually want to /write/ mut fn()?)
+    what's the compatibility story between `mut` <-> `global mut`?
+      neither direction is OK...?
+  how do we handle STArray, STHashTable, ..??
+    `mut HashTable(K, V)` or `HashTable(K, mut V)` not the same as `MutHashTable`!!!
+    1: can replace entire structure, 2: can replace individual values, 3: can /modify/ structure
+    (likewise STM containers, etc.)
+    conceptually just a separate type (STVar + STHashTable) with the same special handling, but that's a bit ugly...
+    is there any way we can do better??
+    what's the diff between frozen and thawed versions?
+      frozen versions only allow reads, plus thaws (clones), update = thaw + write + freeze
+        should we have some kind of do-block or with-block for this??
+        (I hope we're not reinventing linear types...?)
+      do the read-only parts of them match up, with only the write-parts different??
+        difference is in the effects
+        even read-parts of STHashTable are in `ST s`, because observation is dual to mutation
+          but for us, everything is quasi in an ST monad...? ~foreach `mut` argument
+      can we somehow have a single type which behaves differently (read only or read + write) depending on context??
+      we still need to ensure that non-mut HashTable really is immutable, not just shallow `const`!
+        for instance `fn foo(x: MutHashTable, y: HashTable)` with `foo(a, a)`, mutating `x` should not be visible from `y`
+    basic goal is to avoid having 4 separate types PureHashTable, MutHashTable, IOHashTable, and AtomicHashTable
+      and avoid introducing effect or region variables
+      at least we should cut it down to 3
+      diff between Mut and IO is diff between anonymous lifetimes and 'static in Rust
+        `mut` vs. `mut(global)`?
+        but maybe the IO version needs to be thread-safe and the Mut one doesn't?
+      diff between Pure and Mut is diff between Cell and not?
+        also scoped vs. global...
+      Atomic can probs stay separate, it probably needs special logic anyways
+      maybe we want a thing where `mut` is like a modifer on a type, so
+        fn lookup(self: HashTable(K, V), key: K) -> V?;
+        fn insert(self: mut HashTable(K, V), key: K, value: V);
+        (`self: mut Type` or `mut self: Type`?)
+        in `insert, `self` is a GC pointer to a mutable HashTable structure, with immutable keys and elements
+        in `lookup`, it is a GC pointer to an immutable HashTable structure
+        this indicates that if we also consider e.g. `mut Int`, then in `operator=`, it is the `HashTable` or `Int` *itself* which is overwritten, not a GC pointer!
+        how do we get an IORef-alike where a GC-ref is the mutable structure?
+          maybe just `mut (val: T)`, a singleton record?
+          do we even want this??
+        so then can we also have `fn push(self: mut [T], elem: T)`?
+        garbage collection means we don't have to worry about memory safety(?) if the vec is reallocated, old pointers stay valid
+          perhaps this is a performance issue though? (GC should rewrite pointers to point into the new allocation?)
+          what kind of (logical?) iterator invalidation problems can we still run into?
+        (how) could someone write a dual-use mutable/immutable type like HashTable within Ducks...??
+          puts some stress on the precise meaning of the `mut` modifier...
+          type HashTable(K, V) = (size: Int, buckets: [K, V])
+          the mutable structure is "the hash table itself", but how is this delination expressed??
+        impl: use ref counting to elide freeze/thaw copies when refcount==1?
+  global mutable type always uses atomic instructions w/ seq cst
+    syntax: Mutable(Foo)? global mut Foo?
+    do we allow compare-and-swap on arbitrary Foo types? issues w/ same-pointer-vs-same-value... (identity)
+      could allow it for Double and Integer...?
+        but what if the Integer is a pointer-to-BigInt?
+        is there a reasonable slow path we can fall back on??
+      also issues w/ Double on 32-bit... no double-word cmpxchg(?)
+      could just turn fetch-and-add, compare-and-swap into `dangerous` operations?
+        fetch-and-add on Mutable(Integer) aborts process on over/underflow?
+      apparently x86, x64, and ARM provide double-word CAS, while everything else except SPARC and Itanium have LL/SC?
+        at least this solves the problem with Doubles and such on 32-bit
+        does it help us with Integer and arbitrary T types in any way?
+      could also use TSX, or maybe even STM...?
+        but if you want STM, you should use STM! not Mutable.
+  also have to worry about iterator invalidation issues?
+    can't be a safety issue with GC? just correctness? can we even have it with our level of mutability?
+    when does Java have iter.inval. exceptions? is it possible without explicit Iterator types?
+  control structures: if-else, if let, match, loop-break... for in, `while`, `while let`?
+    all of them evaluate to values
+    `while` : `while let` :: `loop` : ?? (`if let` + `break`?)
+      `while let Some(foo) = stack.pop() { blargh(foo) }`
+      `loop { if let Some(foo) = stack.pop() { blargh(foo) } else { break } }`
+    guards `if`, pattern guards `if let`, disjunctive patterns `|`, conjunctive `as`
+purity
+  can we separate pure/impure without making it overly restrictive _or_ complex? (probably not?)
+  what about:
+   * functions that do IO must be marked `io` (or such)
+   * but IO is *not* tracked by the type system; no separate types for pure and impure functions
+   * functions not marked `IO` may not call functions marked with `IO`
+   * *but* they may call any functions passed to them as arguments
+   * but they may *not* pass an IO function as an argument
+   * ...basically: IO functions are out of scope for non-IO functions?
+  this seems clearly(?) sufficient to uphold purity, but how restrictive is it? e.g. for refactoring?
+    use different keywords for pure/impure functions? ("function", "procedure", "subroutine", ...?)
+  this gives us a kind of "effect polymorphism" (`map` has the same effects as its argument, and no others)
+  when would a pure function want to refer to an impure one (other than unsafePerformIO)?
+  when would an impure function want to require that an argument closure be pure?
+    for example, the `par` combinator...
+    just make parallelism of pure functions a pragma/attribute/whatever?
+  this works for STM too!! is there anything else like these?
+    yes: unsafe/dangerous!
+  how would you give a type for `atomically`??
+    haskell: atomically :: STM a -> IO a
+    and what about `orElse`?
+    separate question: syntax vs. semantics
+    semantically, we could just translate to actual effect typing ("pure" functions are effect-polymorphic) internally?
+    tricky case: you want `map (readTVar foo)` to properly qualify as an STM computation...??
+    perhaps just `atomically(action: atomic fn() -> T) -> T?`
+      and `atomic fn orElse(this: atomic fn() -> T, that: atomic fn() -> T) -> T`
+  and what about function types in typedefs and records?!
+    basic principle: should be "transparent", i.e. substituting in the typedef should be the same as having written it out that way in the first place?
+      but what are the conclusions??
+    perhaps typedefs are also implicitly polymorphic over effect variables??
+    which get wired up appropriately when using one in a function/etc.?
+    `fn()` types returned by functions also get the same effects as the function itself
+       e.g. `io fn foo() -> fn()` result `fn` has effect `io`
+            `fn foo(f: fn()) -> fn()` result `fn` has the same effects as `f`
+    need some serious variance analysis to do this properly...?
+    can we really avoid the details leaking out??
+      or do we want to expose it? syntax perhaps the usual `in`, `out`
+  can we really avoid effect variables?
+    won't we end up wanting things like `Stream IO a`...??
+      or would we have just `Stream(T)` with implicit effect variables??
+  exception for `debug!()`
+  what does purity _really_ mean?
+    takes equal elements of the input type to equal elements of the output type, a la Jon Sterling?
+    pure code can't _cause_ side effects... or pure code can't _observe_ side effects?
+    pure code in Haskell can throw exceptions, but can't catch them
+    analogously, could have "pure" code that can /write/ to vars, but not read them?
+      vars for pure code are either read-only or write-only
+    (is there anything analogous for exceptions?)
+  (could have structural effects somehow...? IO = File + Disk + ...)
+    define new effects as sub- or super-effects of existing ones...?
+    would we want to??
+  of the more common Haskell monads, what are our equivalents?
+    just effect typing on top of impure strict evaluation: IO, ST, Unsafe, STM
+    solved with `?` sugar: Maybe, Either
+    not so interesting for us: Reader, Writer, State, List
+    unclear: Cont, Async, ...
+      how much of this can be solved with green threads and IO multiplexing like `libuv`?
+the problems type classes solve
+  class Eq
+  class Ord
+  class Hashable
+  class Show
+  class Typeable(?)
+  class NFData(?)
+  just do it data-generically? over records/variants with whatever names
+    but even then, it may not support all types (e.g. functions)...?
+    so you still need something in the type signature?
+    and what about abstract types, FFI types? (do we have those?)
+    and how do you define a generic ordering over arbitrary records/unions, anyways? alphabetically? :\
+      but you _do_ want equality to work!
+      what else is there?
+    do we separate parametric from non-parametric quantification?
+    also need support for fixpoints...
+  just have type classes?
+    use explicit interfaces but implicit implementations, like Go?
+    this would go nicely with the structural character...
+    ...can we make even the interfaces structural?
+    method names ~ field names? (labels)
+      but what about signatures? if it's an implicit type class, which type is it overloading on?
+    SPJ-style implicit overloading??
+      print(String)
+      print(T has print, [T])
+      print(T has print, Tail has print, (.label: T, ...Tail))
+      print(T has print, tail has print, Label(T) | ...Tail)
+      but what does "has" really mean??
+  just use records-of-functions and implicits, like Scala?
+  how do we actually ensure coherence for (Hash)Map/Set??
+    just store the comparison/hash function inside the container and be done with it? KISS/WIB
+    where else do we want/need coherence?
+  what about associated types??
+    TODO use cases
+  if we don't have nominal types, there is less obstacle to records = modules...?
+  is there anything we can borrow from the structural character of `lens`?
+    instead of `.foo` being a getter, it is a lens? (~HasFoo classes) likewise variants and prisms?
+      do variants get special syntax too? is being uppercase it?
+        variants are already special - get to use them as both constructors and patterns
+        can we generalize this to arbitrary prisms... somehow?
+      can we do better than `get .foo` and `set .foo`?
+  can we somehow have all the nice algebraic typeclass magic from Haskell?
+    Semigroup, Monoid, Group
+    Functor, Foldable, Traversable, Matchable, "Naperian", Applicative, Monad, Contrafunctor, Distributive, Divisible
+    Semigroupoid, Category, Groupoid, Profunctor, Choice, Strong, CoChoice, CoStrong
+  in theory, type classes become modules which are just record types?
+    type Semigroup(T) = (combine: fn(T, T) -> T)
+    type Monoid(T) = (unit: T, ...Semigroup(T))
+    type Functor(F) = (fmap: fn(this: F(A), with: fn(elem: A) -> B) -> F(B))
+    or type Semigroup = (T: Type, combine: fn(T, T) -> T)?
+      (T Int, combine +): Semigroup
+      brings along the issues with having to require `Semigroup.T = OtherThing.T`...
+      can we avoid similar issues with `Semigroup(T)`?
+      how do the two compare in terms of expressiveness?
+      are they really different??
+      `S: Semigroup` corresponds to `S: (T, Semigroup(T))` (I think)
+  some kind of Modular Type Classes thing...?
+  or maybe we could write the type class dispatch functions explicitly?
+    auto fn GetFunctor(T: Type) -> Functor(T) {
+        match T {
+        ...
+        }
+    }
+  is there any way go from a module to a Rust/Go-like boxed interface/trait object (~record of functions)?
+exceptions / error handling
+  should exceptions be "outside the type system"? bad, but simple... (but no exceptions at all is even simpler)
+  an `?` operator and `try`-`catch` as sugar for match/local break/variants, like Rust?
+    `Nil` could be just another variant... or `No`
+    could have:
+      type Bool = No | Yes
+      type Maybe(T) = No | Yes(T)
+      type Result(E, T) = No(E) | Yes(T)
+      (syntax ? = Bool :P)
+      syntax T? = Maybe(T)
+      syntax T?E = Result(E, T)
+        fn open(path: Path) -> File?IoError { ... }
+    kinda start wanting the whole Rust ownership/destructors system if you can just early-escape from any scope...
+      but maybe `withFile`-style functions + can't break out of closures makes not a problem?
+    do we also want something for the reverse - early exit on success? (stare at the ascii table...)
+      obvious thing would be `!`, but not sure if that's really intuitive...
+      also clashes with `!` for "not" :\
+    unlike Rust, we could "embed" "smaller" error types (structural variants) into larger ones!!
+    `?` operator makes error propagation explicit, which is fine; want to avoid accidentally ignoring errors however
+      have a general "unused function result" warning, perhaps specialized message for Yes|No result type
+      have an ignore() function to explicitly ignore it (nicer than `let _ =` perhaps)
+    drawback relative to actual exceptions as an effect: loss of effect polymorphism with HOFs
+      this is probably acceptable, but non-negligible
+      should we have an actual `throws` effect too?
+        regrettably redundant with ADTs... but then lots of other things are isomorphic/redundant
+          when should a function return Foo? and when should it return Foo throws Err??
+          is this really a big problem? we can just have a reasonable uniform convention, and types will keep things straight anyways
+        a function should still only be able to throw a single type of exception
+        and there should still always be a LUB of effects
+        so functions can only throw variant types, which are combined in the usual way?
+          but the usual way is that "A | B" combined with "B | C" is "A | B1 | B2 | C" :\
+            whereas here we might want "A | B | C" - a union rather than an algebraic sum of the variants?
+            when would we want which??
+          also how would we combine A(Int) with A(String)??
+            maybe here we'd want the algebraic sum! A1(Int) | A2(String)
+              but we obviously can't just do it differently depending on whether the inner types are compatible :\
+            perhaps we could always take the LUB of the types, () in the worst case?
+              not so nice - throwing away information
+              but at least it keeps compiling (preserves convenience/compositionality?)
+              just emit a warning when this happens?
+            question is really how to combine two `throws` clauses/effects, `throws A` + `throws B` -> `throws A, B`
+        what would the backwards/forwards translation between Yes|No ADTs and `fn() throws` checked exceptions be?
+          `?` goes from ADT -> exceptions
+            ? :: (Yes(T) | No(E)) -> lifted exp T throws E
+          `try` goes from exceptions -> ADT?
+            try :: lifted exp T throws E -> Yes(T) | No(E)
+          obviously this seems related to the laziness story
+            what actually is lifted exp (eff) T? is it present in the surface language / syntax?
+            also how does this relate to the memoization of pure fn() thing?
+            seems like throws is "more pure" than e.g. IO/mut... it's algebraically equivalent to Either
+            can we memoize `pure fn() throws T`? if it throws T once, it's always going to do that?
+              isn't there any dual impurity on the input / observation-of-effects / catching exceptions side?
+              like how in Haskell even pure functions can throw but only IO can catch them?
+              is this really purely an output thing?
+        would we want HOFs where the argument function may throw, but the HOF does not, because it catches the exception?
+          fn hof(f: fn() throws Foo returns Bar) returns Bar { try { f() } catch Foo { default_bar() } }
+          or should these just go via normal ADTs?
+          is there a benefit to allowing it? is there a benefit to forbidding it?
+        overall this might even be reasonable/workable if we can resolve the union-vs-sum-of-variants question in a satisfying way...
+          also a minor issue of what `pure fn` now means - can it throw?
+            probably some places which require a pure function are OK with throwing, others not
+          and we'd still want to avoid introducing effect variables (what about row variables?)
+        would this allow us to have composable internal iterators? would we also need/want first-class continuations?
+        if we're adding checked exceptions to the set of effects, what others might we also want??
+          Cont? List?
+  only allow catching in IO functions, like Haskell?
+  in-between Rust `panic!` and aborting:
+    call a specified handler function provided by the environment?
+    for clean shutdown/restart of scripting in embedded(-in-application) environment
+    also want to run finalizers
+arrays, hashes, vecs
+  mutable vs. immutable distinction, aliasing :-(
+  what's the fewest we can get away with...?
+    can we somehow conflate records and hashes? (labels ~ keys)
+parallelism, concurrency
+  if we have purity, we can do
+    parallel evaluation
+    STM
+      can we use TSX for STM?
+  concurrency model is global, like Haskell, not scoped, like Rust
+  channels / message passing?
+  revisions?
+  LVars?
+  locks?
+  should be able to challenge Go!
+  SIMD? CloudHaskell stuff (multi-process, multi-machine)?
+  (FRP, like Elm?)
+nominal types, modules, namespacing
+  nominal types for enums means they're referring to specifically your constructors, not just the same name...?
+    what about for structs?
+    are structural types the same thing as a flat global namespace...?
+  have a simple hierarchical module system and `my` keyword to force agreement on your definition?
+    type Maybe(T) = my Yes | my No(T)
+    would a `my Yes` pass for a global `Yes`, just not vice versa? or are they entirely distinct?
+    modules, or just packages? (structural types within a single package not so bad?)
+    if records = modules, this amounts to first-class labels? (a record storing the *labels* Yes and No)
+      what's the diff between first-class labels and lenses...??
+  generativity of modules vs. generativity of datatypes...?
+    actually we need: generative modules _plus_ first-class labels?
+laziness/codata
+  if we have cycles at the type level - equirecursive types - seems like we would want them at the value level as well?
+  first class interfaces, like co-records? (what about co-variants??)
+    (C#-like) fields are data, properties are codata?
+  evaluation order depends on type? data -> eager, codata -> lazy?
+    not quite, we also want lazy eval for "control structures"...?
+    but those are simple HOFs? or rather want call-by-name rather than by-need?
+  but do equirecursive types give us least or greatest fixed points?
+    or either??
+    what does it depend on? the component types?
+  what is laziness useful for in Haskell? which of these are distinct?
+    * infinite (codata) types
+    * conflating data and codata (single def)
+    * composability / factoring out recursion: 
+    * user-defined control structures
+    * TODO gather more from Lennart Augustsson's blog post, Edward Kmett's reddit posts
+  can we get a useful encoding of coinductive types just through something like records-of-functions?
+    type Stream(T) = (head T, tail fn() -> Stream(T))
+    what else do we need?
+    w.r.t. call-by-name vs. call-by-need, can we get away with treating pure nullary functions (`pure fn`, `const fn`) as by-need, and impure nullary functions (`io fn`, `atomic fn`) as by-name? does this work out?
+      plus coercion sugar?
+      from strict `T` to `fn() T`? from expressions `T` to `fn() T`? from `fn() T` to `T`?
+        yes, yes, no
+        any expression of type `T` should be typeable as `fn() T` without being forced
+          (how do we avoid an infinite regress? esp. with generic types?)
+          does this go for both pure/impure functions? with diff only being memoization?
+          pretty much has to if we want effect-polymorphism
+          a non-value expression is typed as "(eff) lifted T" which can become either "(eff) T" or "eff fn() T"
+          but what's the inferred type???
+            "lifted expr" == "automatically-called function"??
+        but a lazy value/thunk/fn has to be forced explicitly by calling it `foo()`
+          might be bottom (exception, nonlocal jump, loop, abort)
+          (or have effects)
+        idea seems related to J. Dunfield refinement types evaluation order work
+      how do arrange for (only) pure fns to be memoized? incl. HOFs with pure fn args(?)
+      T <: pure fn() T <: eff fn() T??
+        would need to represent T as a thunk... (or pointer tagging maybe)
+        but then T <: fn() T <: fn() fn() T <: fn() fn() fn() T ...
+          is that nonsense, or sense???
+      is this the same thing as applicative vs. generative functors?? (OK to memoize pure functions but not impure ones)
+    where does the laziness need to go?? function arguments? recursive type spines?
+which extensions to basic Hindley-Milner do we want?
+  def want polymorphic recursion, at least
+  higher-kinded types?
+  associated types / type functions?
+  type lambdas?
+  higher-rank types?
+  existential types?
+  impredicative types?
+  subtyping??
+  "Complete and Easy Bidirectional..."?
+  do we also want named parameters at the type level??
+  if we allow type synonyms as record components, does that give us... Fomega? dependent types?
+    what about with blunt syntactic restrictions? how about: 
+      types must be uppercase
+      records which contain types must also be uppercase
+      functions which manipulate records which contain types must also be uppercase
+      (if we have constants, then constants must also be uppercase)
+      uppercase stuff can't depend on lowercase stuff? (no dependent types)
+      lowercase stuff can't depend on uppercase stuff, except through `:`?
+    then:
+      uppercase records are modules
+      uppercase functions are functors
+      record types with type components are signatures
+    if uppercase-functions-as-functors can take modules to modules, that means they also take and produce lowercase stuff...?
+      are these also required to be compile-time constant??
+      is there a finer-grained restriction on the output types not depending on the input values?
+      (probably)
+    are generic functions just functions taking records with type components?
+      fn id(T: Type, this: T) -> T
+      in that case the "uppercase rule" should be revised to "if it /produces/ an uppercase thing"?
+        things which have uppercase things in positive positions should be uppercase
+        (this makes sense even in a dependently typed setting? c.f. Idris's restrictions on what values may be used in types)
+      means we're essentially representing the lambda cube explicitly?? functions from types -> values...
+      with "sugar" to make type components implicit and/or infer them and pass them implicitly??
+      potential problem: what is the scope of `T`??
+        if it extends only over the record, then we really want `fn id(T: Type) -> fn(this: T) -> T`
+        i.o.w. an actual function from types to terms (compile-time stuff must all be curried out before runtime stuff)
+        alternate solution: more like pi-types, where the result type can mention parts of the input (the uppercase/type components)?
+          does the curried version above actually avoid this?? maybe this is the _only_ solution
+          actually: the scope of `forall` variables extends across the remainder of the type
+          while `->` doesn't introduce any variables
+          here this `fn` would serve as both `forall` and `->`
+          ...how does this (not) mesh with existential types?
+          is (T: Type, this: T) an existential type?
+          does this cohere with the interpretation of `id` as a forall type?
+          how to distinguish `fn foo(...) -> (T: Type, foo: T)` where `foo` returns a module at compile time vs. an existential at runtime??
+    does not having nominal types make the 'transparent type components' / 'applicative functors' issue any easier?
+    which term-level features correspond to which type-level ones? which ones do we need to prohibit?
+      corresponds directly to lambda cube??
+      functions from terms to terms, types to terms, types to types, terms to types
+      boils down to: which things are in scope where
+      if we have a polymorphic type-level function, can we also call it at the term level?
+        if we want it to be polymorphic, an Id(x) that can be applied to types /and/ terms, that seems to lead in the direction of dependent types (or at least d. kinds)
+          `fn Id(T: Type, X: T) -> X`, where `T` can be instantiated to `Type`
+        something like C++'s constexpr which can work for both static and dynamic terms might be OK? (but we would first need compile time constants)
+    in particular, does anything end up corresponding to `private`? (== signature ascription?)
+      perhaps plain old type ascription?
+      function bodies? closures?
+    does this form an infinite tower in any way?
+      if it does, would be preferable to collapse the tower and make things dependent...?
+    feel like input/output types distinction from type classes still makes sense and is missing from modules world
+       Monoid(T) -> ... and Monoid(type T, ...) are not the same thing!
+       could this let us write functions/functors with the "same shape" as `instance`s in Haskell?
+       e.g.
+           instance Semigroup a => Monoid (Maybe a)
+       =>
+           fn attach_mempty(semigroup: Semigroup(T)) -> Monoid(T?)
+       still issues with having to name them (as opposed to just "a thing that is true"), automatic resolution, coherence, etc.
+       but with our everything-is-records approach maybe they actually coincide??
+         if I partially apply the fibration version to a type, then I get something similar to the parameterized version...??
+         what is the term-level analogue to "Monoid where Monoid.T = Int`??
+  do we want bounded quantification? can we avoid it?
+    where would we want it?
+    does this have any connection to variance?
+    (does `lens` encode bounded quantification in any way?)
+misc
+  integrate regexes into pattern matching?
+  built-in ABTs / name binding or whatever?
+  add types to labels/tags/variants themselves -> dependent types??
+  are dependent products as functions and as records the same thing modulo polarity..???
+  functorial species?
+  miller higher order pattern unification? (term-level unification)
+    is this related to relational algebra, joins, etc.??
+  SHErrLoc?
+syntax
+  primary objective is grokkability
+  someone who has never seen Ducks before should be able to grok the code, as far as possible
+  should be easy to read scanning left-to-right?
+  (should be usable as a data description language, like Lua...?)
+  can steal ideas from Co
+  parentheses are always/only records, evaluation and precedence grouping are both {}
+  do we want ranges built-in? `..` vs `...` becomes tricky...
+    maybe `...` for ranges (inclusive) and `..` for splicing / wildcards. or vice versa.
+  should variants be lower- or upper case? what about type variables?
+  juxtaposition for record fields is just sugar for more explicit form?
+    (a 1, b 2) same as (.a = 1, .b = 2)?
+    what about ((.a, .b) = (1, 2))?
+  syntactic sugar for HOFs a la Rust's `do`?
+    foo(a, b) { ... } -> foo(a, b, \{ ... })
+    how to differentiate arguments to HOF vs. arguments to argument function...?
+  how far can or do we want to go with types-look-like-their-inhabitants?
+    "String"?
+    `{ Int }` for a function returning int...?
+  what can we use as the syntax for STM stuff? `transactional`? `atomic`?
+    `atomic` seems nice
+    `atomic fn` only being callable inside `atomic` blocks and `atomic fn`s sounds nice...?
+      this is exactly like `unsafe` in Rust
+      we could, in fact, also do the same thing for `unsafe`/`dangerous`
+      `dangerous` things may only happen inside `magical fn`s?
+        this doesn't really break symmetry (any further)
+        `atomic { }` can only be used in `io fn`s
+        `dangerous { }` can only be in `magical fn`s
+    do we also call e.g. `TVar Int` -> `atomic Int`?? is this syntactically unambiguous vs. our `STM Int`? what about mentally?
+      `STM Int` becomes `atomic fn() -> Int`, most likely
+      so maybe `TVar Int` should be `Atomic(Int)` instead?
+    what about more advanced structures like TChans etc etc?? `AtomicChan`?
+  what about for IO stuff?
+    `io`? `global mut` (bit long...)? is there anything clear as `global mut` but shorter?
+    `proc`? `do`?
+      `io fn(Int) -> Int`
+      `proc(Int) -> Int`
+      `do(Int) -> Int`
+    idea 1: `io` as `global mut`
+    idea 2: `io` as "can do anything at all, except `dangerous`"
+    like idea 1 better: `io` can't break variants of pure/`mut`, do `atomic` things, ...
+    `io fn() -> T` should be easier to understand than `IO a`, and means the same thing
+       `IO a` is actually a closure!!
+  functions are pure and effect-polymorphic over their argument functions by default
+    how to explicitly denote a pure function? just `pure fn`??
+    is there any better word than `pure`? `const`?
+  should atomic/pure/dangerous/io/fn be uppercased like other types?? but unlike other keywords...
+  if everything is a record and records-containing-types are modules:
+    no `type` keyword at all, just `let`? (no `fn` either? not even `let`?)
+    can everything work out purely by capitalization/lexical classes?
+    let foo(bar) = ... function def??
+        foo(Bar) = ... function def??
+        Foo(bar) = ... destructuring of `Foo` variant with `bar` field
+        Foo(Bar) = ... typedef??
+        Foo(B)   = ... typedef (type-level function)
+    if types and terms are in different lexical classes, does that mean they're (trivially) in the same namespace?!
+      i.e. can't have a type and a term with the same name
+      potential further restriction: can't have a type(def) and a variant with the same name?
+        can't have a variant called Int??
+        no, this doesn't make sense, /every/ name is a variant name
+      does this make the syntax for dependent types easier?
+    could also have typedefs be `type fn`?
+  more keywords (Rust) or fewer (C-ish)?
+    fewer is more minimalistic, concise, and elegant
+    more is more approachable and readable
+    more sounds preferable... as long as it doesn't become noise!
+  explicit tail call syntax?
+  `foo.assert()` returns x in Yes(x), otherwise aborts... requires type Yes|No, or Yes|...?
+    same question for `if`, `?`, ...
+    probably better to require Yes|No and some kind of separate explicit translation (`is`?)
+  `if` can match `Yes`/`No` regardless of contained data - but can we also bind that data somehow (somewhere)?
+  (likewise, can `is` simply map to `Yes`/`No` together with the contained data...?)
+    have some kind of special `this` / `it` variable...?
+    is this the same kind of idea as $_ in Perl??
+  fn coalesce(this: Yes(T) | No(T)) -> T {
+      match this {
+          Yes(x) | No(x) => x
+      }
+      --
+      let Yes(x) | No(x) = this;
+      x
+      --
+      this as Yes(it) | No(it)
+  }
+  && and || can also preserve/combine data...?
+    (&&): (Yes(X) | No(..), Yes(Y) | No(..)) -> Yes(X, Y) | No
+    or something like that
+  pattern matches have three parts: the scrutinee, the pattern(s), and the result
+    for simpler cases, this can be tedious
+    can we make it easier?
+    what are the simpler cases? what do they have in common?
+  type-level || and && operators?
+    type A || B = Yes(A) | No(B);
+    type A && B = (A, B); // or something...
+    not so nice w/ chaining...
+  some kind of sugar for Module.T?
+  implicit generics parameters, similarly to lifetime elision in Rust...?
+    reverse: List -> List
+    map: (list: List(A), with: (elem: A) -> B) -> List(B)
+  user-defined operators?
+  1-based indexing?
+    would go nicely with inclusive ranges...?
+  `panic!`? `despair!`? `alas!`?
+  uninhabited type is `!`, `Never`, other...?
+    or it could be `()` the empty *sum* type, and the empty product type could be `void`...? (just to confuse everyone)
+    are `forall a. a` and the empty enum the same thing?? (what about the reverse - `()` and `exists a. a`?)
+      not quite - they have different kinds? empty enum: Enum <: Type, `forall a. a`: Type
+  records and variadics and splicing and stuff:
+    fn foo(a: Int, b: Char, ...) // ?
+    fn foo(a: Int, b: Char, ...args) // "varargs" / row polymorphism
+    (a, b, ...) // ?
+    (a, b, ...tail) // splicing / extension
+    foo(a, b, ...) // partial application
+    foo(a, b, ...tail) // splicing / varargs
+    match val {
+        Foo(a, b, ...) => wildcard
+        Foo(a, b, ...tail) => destructuring / inverse of splicing/extension
+    }
+  records and shadowing:
+    which is the "front end" of a record, where new elements get added, and which shadow previous ones?
+    (a 1, a 2).a -> 1 or 2?
+    likewise splicing:
+       (a 1, b 2, ..rest) where rest contains an `a`
+       which shadows the other? which do you usually want?
+         if you think of it as a record update, you want the explicit `a` to shadow the one from `rest`
+         if you think of it as a splice, maybe you want the opposite...?
+         actually, a splice is more like when you splice one record into /another record/?
+         so that would look something like `(..rec1, ..rec2)` with the normal ordering rules in effect
+       are both that and (..rest, a 1, b 2) legal with opposite behavior??
+  if modules are records, what do glob imports look like? do we have them (want them)?
+  function type, function decl, and lambda syntax:
+    lambda: `fn(a, b) a + b`, or `fn(a, b) { a + b }` (likewise `atomic fn() { ... }`, etc.)
+    type: `fn(n: Int) -> Int`?  fn sort(list: List(T), by: fn(this: T, that: T) -> Less | Equal | Greater): List(T)
+          `fn(n: Int): Int`?    fn sort(list: List(T), by: fn(this: T, that: T): Less | Equal | Greater): List(T)
+          `fn(n: Int) { Int }`? fn sort(list: List(T), by: fn(this: T, that: T) { Less | Equal | Greater }): List(T)
+          `fn(n: Int) Int`?     fn sort(list: List(T), by: fn(this: T, that: T) Less | Equal | Greater): List(T)
+    decl: `fn add(n: Int, m: Int) -> Int`?
+          `fn add(n: Int, m: Int): Int`?
+          `let add = fn(n: Int, m: Int) { ... }`?
+          `let add(n: Int, m: Int): Int = ...`?
+    typedefs: `type Bool = Yes | No`
+              `let Bool = Yes | No`
+              `type Maybe(T) = Yes(T) | No`
+              `let Maybe(T) = Yes(T) | No`
+              `let Maybe(T: type) = Yes(T) | No`
+              `fn Maybe(T: type) -> type = Yes(T) | No`
+              `fn Maybe(T: type): type { Yes(T) | No }`
+              `fn Maybe(T: Type): Type { Yes(T) | No }`
+              `let Maybe = fn(T: Type): Type { Yes(T) | No }`
+              `let Maybe = fn(T) { Yes(T) | No }`
+              `fn Maybe(T) { Yes(T) | No }`
+  `{ }` always means "evaluate this code"?
+    can we leave off `{ }` even for "top-level" function defns?
+    fn add(a: Int, b: Int): Int a + b
+    awkward...
+  to what extent do we want the syntax to reflect algebraic properties, like Co and Haskell?
+    functions defined by defining their behavior, w/ same syntax as application
+    function over sums splittable into sum of function arms
+    etc.
+  OverloadedLiterals?
+  potential keywords:
+    type, fn, let, mut, atomic, dangerous... io? global? pure? const? magical? trusted? extern? operator? auto?
+    if, else, match, loop, break, continue, return... for? goto? try, catch? throw? throws? case? (field, label?) yield?
+    is, in, it, as, at, of, on, to, do, out, this, that, what, when, with, where
+implementation
+  uniform representation (boxed)
+    what is uniform rep. necessary for?
+      generic functions
+      record offsets?
+      (but functions incl. generic functions all take records as arguments, conclusion: ?)
+    but we should pass function arguments as the whole record, instead of a pointer to a record...?
+    think we can do value optimizations *per type*?
+      Double: store it inline
+      Integer: tag bit, store inline if size <= WORD_BITS - 1, otherwise pointer to bigint
+      String: up to 8 chars inline, otherwise pointer? (is there any invalid unicode we can use to signify pointerness?)
+        also how do we store the length?? see also array...
+      Array: (a slice) on 64-bit, store length in extra bits, otherwise pointer to pointer+length?
+        we have 4 tag bits + 16(?) sign-extended bits
+        can we use a single bit pattern to denote "this is actually a pointer", or do we need a whole bit?
+        (what about `Vec`, if we have a `Vec`?)
+      closures are also 2+ pointers :( code + data + tracing function
+        pointer is to data, with code and tracing pointers alongside...?
+        on 32-bit we can store both code+data pointers
+        can/do we want anything special for record-of-functions (e.g. shared environment)?
+      on 32-bit platforms, do we want value to be 32-bit (pointer size) or 64 bit (like JS)?
+        32-bit is wasteful for Doubles
+        64-bit is wasteful for pointers(?) (but we get an extra 32(+3) bits to store stuff inline?)
+      Structural data: ???
+        what could we usefully use tag bits for?
+          which variant is pointed to; but the variant tags themselves are pointers, not ints...?
+          could special-case a few, like No/Yes... but not very satisfactory
+          does type information about variants-which-may-be-present help us here?
+        for pure-enum types like Foo | Bar | Baz w/ no data we could store it inline?
+          could also do more advanced/general Rust-style #compact repr...???
+          is this just a performance issue (boxing/unboxing penalty) or a feasibility issue (interior pointer problems)??
+            suspicion: purity (non-identity) means it's just a performance issue
+  how to represent/implement records and argument passing??
+    do arguments get passed as a single record, or as each individual argument (like C)?
+    things to optimize: indexing, "slicing" (sub-recording), allocations, sharing, updating...
+    use a similar basic idea as slices in Rust?
+    a record is a pointer to the data, plus its description
+      description, i.e. which field is where?
+      would be nice to use bitmasks or something, but hard if space of potential labels is unbounded...?
+        our predicament: space of potential labels is unbounded, but space of labels _actually used_ in any given program is _quite_ bounded
+        but do we have any way to take advantage of that without knowing in advance which labels are used?? (i.e. whole program compilation)
+        sounds like a job for some kind of hashing...? but how to handle collisions?
+        also need to handle duplicate/shadowed fields :\
+      requirement: should be simple/easy to derive new descriptions from existing ones (like narrowing a slice)
+      use some kind of encoding based on the name of the field itself??
+        tries, hashing?
+      can key by either: (A) globally unique pointer to name (link-time), or (B) hash + full name (compile time)
+      some kind of persistent HamtMap seems like a good fit?
+        with (A), hash collisions correspond exactly to duplicate labels
+        and we always only want the outermost one
+        would be nice to somehow take advantage of our static knowledge though...
+        e.g. the keys are all compile time constants, there will never be misses
+    if we have `(a Int, b String)`, is it /really/ pointing to a two-word allocation with those fields, or potentially to a sub-record of some larger record??
+      if it's the latter, then _all_ record field access needs to happen dynamically, which is slow!!
+      if it's the former, then going from `(a, b, c, d)` to `(a, b, c)` requires a new allocation, which is slow?
+        can't really say sharing is OK for contiguous sub-records, because fields are conceptually unordered...?
+      also: deeper subtyping of structures!!
+        requires representation to be "naive"/"dynamic"/"pointer-based"?
+        but the expressiveness + interoperability win would seem to weigh heavier than the performance loss
+        (...provided the type system can handle it)
+        (this could also allow something like the blame calculus...?)
+    only need to be good for small and medium sized records, large ones don't really occur?
+    should consider representation of records and variants (structural data) in an integrated way?
+  garbage collected (obvs)
+    what kind? generational (obv), type-preserving!
+      no runtime headers/tags except for existentials (closures)
+        other existentials: Any, Dynamic!
+        means Any can't be just void*, has to be at least data+tracer
+        ...means can't cast e.g. Array(T) to Array(Any)?
+        runtime representation of a `type` is actually its trace fn! (anything else?)
+      how does per-type tracing code work for structural types?
+      and for the stack...?
+        just insert `trace(x, y, z)` calls at each GC point in fn, passing each in-scope local var??
+          GC points = allocation points? function call points?
+        can it really be this simple?
+        ...we also need to walk up the stack somehow
+        pass tracing pointer (closure?) as hidden arg from parent to child?
+    can/should we restrict mutability to make it single-pass...?
+      no heap cycles sounds overly restrictive...?
+      if we know about things that have been mutated, does this let us do or get close to single-pass?
+        only mutated things may back edges!
+        ...but also `let loop`, and similar cycles(?)
+        would this also allow a reference-counting based scheme with weak pointers for the back-edges?
+        what if we add any pointer that gets mutated to the root set...?
+          we can still have references /back/ to the root set... could perhaps detect it though (cheaply?)
+          what does "single pass" really mean?? in what sense are other GCs multi-pass?
+          and what does this idea look like for reference counting?
+            what is "the root set"??
+            pointers back to the root set are weak pointers?! is that even meaningful?
+        this is just "write barriers", actually.
+          write barriers: generational GC
+          read barriers: incremental/concurrent GC
+    GC rebuilds records to throw away unused fields?
+    can we let it be concurrent? (would need read barriers...?)
+    incremental -> same thing??
+    compacting?
+    bump-pointer?
+    don't need to trace `mut` pointers - must be into stack?
+    card marking and stuff?? for records too, or only arrays?
+    custom garbage collection routines for FFI? 
+      how, if we don't have nominal types and type classes...?
+      can modules solve it?
+  try to minimize memory footprint as much as possible within confines of GC and uniform rep.
+  variants can be represented as const char* pointers to their names as strings
+    thus tag comparison is just pointer comparison
+    robust to compiler/linker optimizations: different variant pointers must be different, because the pointees are different
+      what about suffix/prefix optimizations...?
+    must still ensure: same variant pointers are always the same!
+    this also lets us do `Show` impls easily and efficiently
+      and other stuff...?
+      first-class labels? labels as hash table keys?
+      JSON? FFI?
+      eq/ord impls?
+      reflection hacks, dynamic code hacks like promoting string literals -> labels??
+    drawbacks: not stable across recompilations; only wire-compatible w/ exact same binaries
+      but can send the full name-string instead...!
+    why this works:
+      the space of potential names is much bigger than what can be losslessly encoded into 64 bits (max ~11 chars)
+      but the total number of names which fit all at the same time in a 64-bit address space is necessarily much smaller
+    what about for nested variants?? Foo | Foo -> 0Foo | 1Foo
+      could have them point to "0Foo" and "1Foo" accordingly
+      but how can we check against "the outermost"??
+      use spare bits in the pointer to track the number, and mask it off?
+        always use 64-bit tags, even on 32-bit
+        32-bit: second word is the number
+        64-bit: there are plenty of spare bits to store the number
+      ...do we even need to distinguish them? or is this shadowing purely a type-level thing?
+  what about record fields? them too?
+  fully structural data means easy interoperability with various things...?
+    wire formats (JSON, XML, CapnProto?)
+    databases?
+    dynamically typed languages?
+  do we have any way to make the FFI safe (like Lua)? both fast /and/ safe?
+  implementation as a library: parse -> typecheck -> backend, runtime
+    could have a thing where it reprints the same file with all type annotations added
+    can then skip type inference, or even the code for it
+  "everything is a warning?" (lint)
+    type errors become bottom values like in GHC?
+  compiler/interpreter-as-library?
+    `fn eval(T)(text: String) -> T?`
+  backends:
+    interpret in Rust
+    compile to Rust
+      how far can we embed the type system into Rust's...?
+      variants -> string interning
+      most pointers are shared pointers... or a custom Gc<T>?
+      `mut`s -> `&Cell`
+    compile to C
+      it seems difficult to support things like tail calls, green threads, relocatable segmented stacks with C/Rust :\
+      but maybe if heap-allocate stack segments we don't actually need to rely on C/Rust's stack behavior / calling convention?!
+    compile to LLVM
+    compile to bytecode? JIT?
+    (to what extent) can we make all of these binary compatible...?
+      using repr(C) is one part of it
+    whole program compilation w/ all pointers and calls turned into tags and switches?
+      this seems orthogonal to the choice of backend??
+      but how much of the different representations/strategies can we abstract out from the backends?
+      under what conditions can WPC remove all garbage collection?
+        w/ type preserving GC, dead code elim helps (necessary but not sufficient cond.)?
+        what about stream fusion like stuff??
+  aggressive specialization?
+    of code... also of data??
+    specialize for:
+      generic functions
+      HOFs (a la Rust/C++ closures)
+      record types
+      variants??
+      values?
+    for efficiency of: records, GC tracing, modules...
+    (supercompilation...??)
+  runtime
+    GC
+    STM stuff
+    threading stuff?
+    IO stuff?
+    what else?
+  packaging: Nix? Cargo?
+    how strictly can we support semver?
+  formalize in Twelf? PLT Redex? (how do they compare? redex is for "debugging operational semantics" - does it also do proofs?)
+also look at
+  Morrow, Lamdu, Elm, Swift, Lua, Go, Koka?
+  Go: https://talks.golang.org/2012/splash.article
+
+
+THE PLAN
+ * Structural records and variants with duplicate labels a la Daan Leijen
+ * Unified module, type, and record system, at least syntactically (a la 1ML?)
+ * _All_ name resolution is actually record field access
+ * Equirecursive types
+ * Subtyping
+ * Variances with evidence
+ * Pure functions with local, shallow mutation
+ * Very simple effect typing with no effect variables, few effects (mut, io, atomic, dangerous)
+ * Laziness: `pure fn()` is memoized, `exp: eff T` => `exp: eff fn() T` without getting forced or requiring lambda
+ * Global concurrency primarily via STM(?) (revisions, lvars?)
+ * Vaguely Rust-style syntax, modulo records and module-record unification
+ * Prototype interpreter in Haskell
+ * Compiler in either - or self-hosted?
+ * Runtime in Rust (if there's any runtime at all, and not just generated together with the code...?)
+
+MAJOR QUESTIONS
+ * Type inference (BiDi? MLF?)
+ * Overloading of ==, >, print, etc.?
+ * Arity/label polymorphism, splicing, reflection...?
+ * Freeze/thaw system based on local `mut` and variance? how to do `mut HashMap` etc.?
+ANSWERS
+ * How to handle abstract types?
+   => 1ML
+ * What level of polymorphism to support? (Higher-rank? Impredicative?)
+   => Impredicative (MLF?) (But subtyping...)
+ * Laziness and/or coinductive types?
+   => just do memoization for `pure fn() -> T`
+
+
+TODO
+ * Read about ML modules [Modules vs. type classes, F-ing modules, 1ML]
+   * http://lambda-the-ultimate.org/node/5121 (1ML)
+   * Read about overloading in relation to modules [MTC?]
+ * Learn more about coinductive types, and relationship to evaluation order
+ * Read about equirecursive types
+   * http://www.cs.cornell.edu/courses/cs6110/2014sp/lectures/lec35a.pdf
+   * http://www.cs.cornell.edu/courses/cs6110/2014sp/lectures/lec36.pdf
+ * Read more about structural types (typing, implementation, generics/variadics...)
+ * Think about local mutability freeze/thaw system []
+ * Read about type inference (H-M, bidi, ...?) [?]
+ * Read about structural types and subtyping [??]
+ * Learn about coroutines [Yield: ...?]
+ * Look at 'Gentle Art of Levitation' 
+ * Read more about revisions-based concurrency
+
+Mark P. Jones XHM?
+http://lambda-the-ultimate.org/node/174 Morrow & first-class labels
+http://lambda-the-ultimate.org/node/4394
+http://blogs.msdn.com/b/mulambda/archive/2010/05/01/value-restriction-in-f.aspx
+http://www.smlnj.org/doc/Conversion/types.html value restriction
+http://jozefg.bitbucket.org/posts/2015-03-27-unsafe.html value restriction
+http://etb.dreamwidth.org/364435.html equirecursive types
+http://lambda-the-ultimate.org/node/3711 Implementation of Cardelli and Daan Leijen Style Record Systems?
+http://research.microsoft.com/en-us/projects/koka/default.aspx
+http://lists.seas.upenn.edu/pipermail/types-list/2011/001525.html recursive types, kinds... (equirecursive types + System Fomega)
+https://docs.google.com/document/d/1wmjrocXIWTr1JxU-3EQBI6BK6KgtiFArkG47XK73xIQ/preview?sle=true Go 1.5 concurrent GC pacing
+https://ghc.haskell.org/trac/ghc/wiki/Records/OverloadedRecordFields/Redesign
+http://homepages.dcc.ufmg.br/~camarao/CT/ overloading
+http://blog.ezyang.com/2012/11/why-cant-i-just-be-a-little-lazy/ strict vs lazy, polarities etc.
+https://sage.soe.ucsc.edu/ hybrid typechecking, refinement types, etc.
+http://www.reddit.com/r/haskell/comments/335d5r/why_does_the_functor_signature_not_include_a_lift/cqhxtvm Monoid(T) { ... } vs. Monoid { type T }
+http://parametricity.com/posts/2015-05-04-exhausting.html exhaustiveness checking
+linear integer constraints?
+
+ABTs
+  http://semantic-domain.blogspot.co.uk/2015/03/abstract-binding-trees.html
+  http://semantic-domain.blogspot.hu/2015/03/abstract-binding-trees-addendum.html
+  http://www.reddit.com/r/haskell/comments/2y1i4x/haskell_projects_looking_for_contributors/cp5d3mt#cp5t7a7 
+  http://hackage.haskell.org/package/abt
+
+"Guess-the-plan type inference has never been a good idea. Follow-the-plan type inference is wonderful. Let's separate the two notions."
+- pigworker
+
+
+data NonEmpty a = Cons a (List a)
+data List a = NE (NonEmpty a) | Nil
+
+data Cons a = Cons a (List a)
+type List a = Maybe (Cons a)
+
+type Cons(T) = (head: T, tail: List(T))
+type List(T) = Cons(T)?
+
+"So I guess nothing is going to happen. I wonder how we might design a programming language to manage the impact of library evolution. At the moment, we have no good way to say "I have noticed this change and updated my code, so stop warning me."."
+versioned imports and warnings??
+
+how would units of measure look here?
+one half is the same as newtypes in general (however that works)
+what goes in place of the phantom type variable?
+do we have something like DataKinds?
+
+"We must pass offsets at runtime for constant time field access. Of course, the CPU already carries this offset for us: it's the stack register, and the environment is the stack. Record extension is thus pushing a stack frame, and record selection is accessing a stack variable."
+the whole stack is a big record??
+(as relating to: local variables, function arguments...?)
+  functions and closures represented the same way? (single argument: a record)
+  all shadowing and scoping boils down to record label duplication
+  name access just refers to the outermost field with that name in the stack-record
+  argument passing just updates the record with the specified fields, then passes the record to the callee
+  essentially all name resolution and anything to do with names is just records
+  what does the relationship between lambda arguments and captures end up being...?
+    do they end up the same thing??
+    nah, they shouldn't be
+    captures are /stored/, arguments are passed /each call/
+  this suggests we always have a notion of a 'current record' or 'focused record' which names in the given scope are resolved from?
+    which suggests an operation to push the fields of another record onto it - this is `import`, `with`, `use`, etc.
+    and then `hiding` also falls out naturally as subtraction of a record field (~DL's paper)
+      can we always implement `hiding` by "going back" to the "previous" record before it was extended ("persistent" after all means a thing...), and avoid having to allocate new records with tombstones?
+      perhaps the typesystem can help ensure this...? (as opposed to w/ runtime maps)
+      actually, for most cases we wouldn't have to do anything for subtraction - just a type system thing?
+        though what about GC?
+        maybe GC is generated code for given scopes and knows what to trace?
+        but this is only valid for the stack(?) (= "current record"), what does it look like for the heap?
+        is there actually a difference??
+        perhaps the GC is what reallocates records and "compacts" them, actually physically removing unreferenced fields?
+      exception is duplicate labels...
+        can we represent these in a way which avoids the issue??
+    do you ever want to 'start fresh', with an empty scope? (perhaps with separate files, like `extern mod`?)
+    what other functionality can be decomposed into this kind of primitives?
+      function calls just extend the environment with each argument, then pass it to the function
+        could you just pass the entire current environment to the function as-is?
+        but this is not very readable - which was the whole point of named arguments!
+        probably want some judicious distinctions between what is technologically possible and what is practically prudent
+        what actually do closures do in this interpretation??
+          they seem to have "two stacks"? the one they capture, and the one passed in as arguments
+        how does this relate to tail recursion?
+      record literals can use the inverse of the `import` operation
+        capture the current environment as a record (only the current scope, or all scopes...?)
+        i.e. Foo { .. } in Haskell
+    what actually is "the current record" - is it a pointer that gets mutated? (the stack register?)
+  also how does this relate to `mut` stuff?
+  what about type stuff?
+  are there any similarly pleasant unifications lurking on the variants side...?
+perhaps the 'package repository' could also be a single big graph of records...?
+if we do this, as records aren't "linear" (in space), neither is the stack...
+  might this have any relation to cactus stacks or similar?
+  or at least, it seems like it subsumes split stacks
+
+wanteds
+  lookups, extensions, and subtractions are all common
+  records can get fairly large
+  keys can be duplicated
+givens
+  keys are statically known
+  lookups cannot miss
+  only the outermost duplicate label will be accessed
+
+
+theorizing:
+  running a full tracing GC at every scope exit would guarantee that everything is collected promptly (immediately upon death of last reference), even cycles
+  is there any way we can make that more efficient while preserving correctness...?
+  perhaps we can do some kind of tracing cycle detection upon mutation?
+  can we prove a cycle doesn't exist without tracing the whole subgraph of the heap...?
+  also the problem isn't the *existence* of cycles, but *leaking* them!
+    cycle trace on rc decrement, as in the literature...?
+  can we somehow auto-determine which references should be weak??
+    clearly not possible in the general case, but maybe for a suitably "well-restricted" language...?
+    weak refs are probably a red herring
+    they have observably different semantics from normal refs (have to explicitly deref, return Maybe)
+    both RC and GC systems have weak pointers
+    it's just that RC needs them much more
+
+GC: N generations with exponentially increasing size + age + collection intervals?
+  if a 
+
+misc:
+  website ducks-lang.io; a url for every language feature and keyword
+    ducks-lang.io/if, ducks-lang.io/fn, ducks-lang.io/dangerous, etc.
+  filesystem structure is also just a record?
+    directory -> record, fields = files+subdirectories (chopping extension .ducks)
+    file -> record, fields = definitions in file
+    allow file/dir names like Foo.Bar.Baz?
+    entry point = ?
+  ducks.io/if, ducks help if, etc.
+  practitioners: Ducklings
+
+The Ducks Plan
+1. Implement STLC typechecker + interpreter in Haskell
+ Where/how: FP Complete IDE?
+ Totally naively at first
+ Then: ABTs or bound
+ Atkey-style compositional typechecking (and/or "... elaboration in Applicative style"?)
+ lens
+2. Start adding more advanced stuff
+ 1ML stuff
+ Daan Leijen records
+ What about type inference?
+
+
+strictness is the right default because:
+ * more pervasive/familiar easier to think about etc etc
+ * dual to call-by-value isn't actually Haskell-style call-by-need, but call-by-name, which is impractical
+ * construction to add laziness to strict lang (() -> T, Thunk(T)) is much more obvious and easy to grok than dual in lazy lang (a :-> b)
+
+Primitives
+ * Algebraic structural records
+ * and variants
+ * `[eff] fn(rec) T`
+ * `type`
+ * `Int`, `UInt`, `Float`, `Array`
+ 
+Type inference
+  we're not using System F, we're using 1ML
+  so perhaps we should use a type inference scheme designed for 1ML rather than for System F?
+  what would that look like?
+  what's the relationship between MLF and 1ML?
+    (neither use exactly System F types; are the differences similar or different?)
+
+
+fn id(T: type, x: T): T { x }
+
+fn List(T: type): type { type Nil | Cons(head: T, tail: List(T)) }
+
+
+fn Maybe(T: type): type { type Yes(val: T) | No }
+
+let Bool: type = type Maybe(());
+
+fn find(T: type, list: List(T), pred: fn(arg: T): Bool): Maybe(Int) {
+    match list {
+        Nil -> No
+        Cons(head, tail) -> if pred(arg head) { Yes(val 0) } else { find(list tail, pred) }
+    }
+}
+
+what would type class orphan/coherence rules look like if modules are just records? plus structural types? (does that even make sense?)
+  are coherence / orphan rules also somehow related to generative abstraction (as an effect)...?
+    (why would generative abstraction be an effect? something similar to getting a new name from a name supply monad...?)
+
+Just have operators be aliases for functions of a particular name - i.e. desugars even before name resolution?
+    a + b ==> add(a, b); then look for `add`
+    (or just allow operators as names, like Haskell)
+this doesn't solve the polymorphism question
+convenient polymorphism is just a matter of implicitly passing arguments and calling functions (instances)??
+blahrg
+maybe some kind of ADL??
+  if a `plus` function is defined alongside the type `T`, look it up there??
+  this doesn't sound very modular...
+  and it only "works" for existentials (does it even work there??)
+
+io fn print(T: Type, show: Show(T), val: T)
+fn add(T: Type, num: Num(T), a: T, b: T): T
+
+fn if(T: Type, cond: Bool, then(): T, else(): T): T
+
+fn List(T: type) { Nil | Cons(head: T, tail: List(T)) }
+
+fn Functor(F: fn(T: Type) -> Type) {
+    (map: fn(A: Type, B: Type, f: fn(arg: A) -> B, arg: F(T A)) -> F(T B))
+}
+
+function assert(T: type, this: T?) returns T {
+    match this {
+        case Yes(value) -> value,
+        case No -> abort()
+    }
+}
+
+https://twitter.com/psygnisfive/status/611926659206393860 first-class env handling
+
+can we have just parameterization (Monoid(Int)), but not fibration (Monoid where T=Int)?
+  instead of
+      type EQ  = (T: type, eq: fn(T, T) -> Bool)
+      type LT  = (T: type, lt: fn(T, T) -> Bool)
+      type ORD = (E: EQ, L: LT, E.T = L.T)
+  we'd have
+      type EQ(T: type)  = (eq: fn(T, T) -> Bool)
+      type LT(T: type)  = (lt: fn(T, T) -> Bool)
+      type ORD(T: type) = (eq: EQ(T), lt: LT(T))
+  (a) can this express everything we want to be able to express? (what do we need ~ for in Haskell? can we do those things? do we want to?)
+  (b) is the result sufficiently practical to work with?
+  (c) does this simplify the language/implementation? (no singleton types, translucent signature matching, ...?)
+  unlike Modular Type Classes, we'd have a natural (and necessary) distinction between MultiParamTypeClasses and TypeFamilies
+
+stuff like HList and flexible sum types require immense type-system effort in Haskell&co. and everyone ends up wanting them... here they are basic
+    the other thing with HList, though, is that it has an order and you can iterate through it
+    for this we can use many fields with the _same_ name, which do imply ordering?
+      if we also have anonymous fields, we recover variadic tuples...
+      is it easy (or possible) to do induction over these?
+        can we just translate the Haskell implementation into an explicit dictionary-passing one, and that to Ducks?
+also vertical lambda composition!
+  (is this the same thing as a "pattern calculus"?)
+  can this _completely_ replace a `match` construct?
+    including all the fancy features like nested patterns, conjunctive/disjunctive patterns, ...?
+  "Switch statement that doesn't suck? It's called hash table storing functions."
+    
+  can we also get something like pattern synonyms out of this? (not just "arm synonyms")
+can algebraic structural sums/products also help us with improving relational algebra (first-class types, NULL -> sum types)?
+
+there is actually a reason to have fn argument be variant instead of a record: this is exactly definition-by-cases!
+    what about any other type?
+    what about interactions? currying? composition?
+
+fn List(T: Type) -> Type { (case End, case Cons(head: T, tail: List(T)) }
+
+fn Stream(T: Type) -> Type { (case End, case Cons(head: T, tail(): Stream(T)) }
+
+fn Cons(T: Type) -> Type { (head: T, tail: List(T)) }
+fn List(T: Type) -> Type { Cons(T)? }
+
+type Iterator(T) = function() returns (case End, case Next(value: T, next: Iterator(T))
+
+allow full computational repertoire at type level, just impose a fixed recursion (resp. iteration?) limit? (e.g. default n=1024, configurable, anything is fine as long as it's finite)
+
+if equality of equirecursive types is via bisimulation, does that mean the type level is lazily evaluated???
+  but fns can take/return types and values at the same time (modules)... how could their evaluation order be different?
+  is there a separate compile time and runtime evaluation?!
+
+"The syntax of such a lambda calculus would further be simplified if, instead of binary, one had n-ary sums and products. In that case, there would be no need for variables of sum type at all (currently they can only be introduced by the second branch of δ). We would in fact get a pattern-matching calculus, with only variables of type a, and that would still be suitable as a small theoretical core of functional programming languages." - On the exp-log normal form of types
+
+monads / algebraic effects: what about list monad, connection to relational algebra stuff (LINQ)? what about FRP behaviors?
+    things not expressible in relational model: transitive closure
+
+if we interpret `mut T` as `CellRef<'s, T>` everything works out as desired?
+  considering for example `mut HashMap(K, V)`:
+    can get/set the whole HashMap
+    can insert/lookup HashMap elements _by copy_ (no `mut K` or `mut V`), Rust analogue: can't get borrowed pointers to interior
+    in Rust having borrowed refs to `CellRef` interior is bad, because `set()` can invalidate memory
+    but we have GC so this is fine? (TODO think about this harder)
+      and we're not actually taking interior refs but copies, sharing/GC is just an optimization(?)
+  still open question: how do you _implement_ `HashMap(K, V)` with the given methods?
+    do you actually need anything besides individual `mut` cells?
+    you would want mutable arrays, for performance... are there any other necessary primitives?
+      is `[mut T]` actually good enough? extra indirection is unfortunate... (but do we /really/ care?)
+      it's not like the underlying hardware has any primitives besides `[T]` and `mut T` either?
+      and a growable vector can reasonably be approximated with `mut [T]`?
+      the semantic content here is shared observable mutability (i.e. an indirection)... so maybe the syntax should be `T*` instead of `mut T`?
+        (that also works better with `Foo?`: `Foo*?` and `Foo?*` are unambiguous, unlike `mut Foo?`)
+          actual alternative to `Foo*` is probably `Mut(Foo)`, then
+        also the other stuff - & to reference, * to deref, *= to assign?
+          STRef a        -> T*
+          newSTRef     x -> &x (...not quite? mutation of `x` itself isn't visible here...)
+          readSTRef  v   -> *v
+          writeSTRef v x -> *v = x
+          (this is probably too cute by half, and will give people more of the wrong intuition than the right one...)
+            both performance/representation and semantic connotations
+          precedents:
+            T*, &x, *x: C, Go
+            T&, x, x: C++
+            &mut T, &mut x, *x: Rust
+            T, x, x: Java, C#, ... (Swift?)
+          familiar for one population, but arcane for another
+        that's STRef... what about IORef and TVar?
+        what about mutable local variables?
+    how do you freeze exactly "the right things"?
+    TODO think this through
+  also think about `mut Array(T)`... what else?
+    likewise should be able to get/set whole array or individual elements, but not mutate them...?
+  what about `mut (a: Int, b: Bool)`?
+    HashMap/Array get to do per-element things because they have methods like `insert(hash: mut HashMap(K, V))`
+    plain records don't have such, at least by default... (can you write them???)
+      connected to "how to _implement_" question above
+    how does this relate to the `CellRef` analogy? with `CellRef`, you can get interior `CellRef`s into product types, but not sums or indirections
+  other question is how to move between `T` and `mut T`
+    is `mut` a modifier or a type constructor?? can `T` itself be `mut U`?
+    per the above, `mut` is like `CellRef`, and thus a type constructor?
+if I can have a `type MutPoint = (x: mut Int, y: mut Int)`, does that mean we also need hidden lifetime in addition to hidden effect variables?
+  want to preserve the illusion that `fn`s can (only) mutate the `mut` things they get explicitly passed as arguments...
+  interaction with abstraction (existentials), parametricity, ...?
+  does this require us to give up any of the benefits of `type`s being explicit (forall -> fn, exists -> record)?
+how can we avoid global `mut` variables (and thereby total loss of purity)?
+is there a difference between `io` and `global mut`? (thread safety... and/or else?)
+reasons to think we can avoid getting away without any explicit (visible) ST/lifetime variables:
+  in Haskell you essentially _never_ see functions with multiple ST variables
+    though Haskell doesn't even use ST very much...
+  in Rust you need lifetimes much more because you need to use shared & references just to avoid moving
+    but in Ducks, like Haskell, we have by-value copying and garbage collection for that
+  there's always a LUB for lifetimes(?)
+    even if they don't overlap, there's a containing lifetime
+      but can we know (or invent) it?
+      and what if it's 'static?
+  but what actually is our plan?
+    if a function explicitly takes a T*, it's effect implicitly gains "may mutate that region"
+      each T* parameter gets a different region
+      generic code can't mutate a T* due to parametricity
+        except if gets passed an fn() which does that, but then it's tracked by the effect type
+    if a type contains a *T, the type gets an implicit region parameter, and starts behaving like T* in functions
+      also a separate region for each T* mentioned in the type?
+    if you put multiple T* into a container, [T*] for example, take the LUB of the regions
+    what about things like T**? (co/contra/invariance)
+      &'a &'b T where 'a: 'b
+      can this happen in generic code? (T* where T = U*)
+        and does it interact with recursive types? type Foo = Foo*
+"More detailed analyses of references are possible. In particular, we can decompose them into “sources” from which we can only read and “sinks” to which we can only write. Sources are covariant and sinks are contravariant. Since we can both read from and write to mutable references, they must be non-variant."
+  we could have actual mutable refs `T*`, and then just have separate `set: fn(T)` and `get: fn() T` you can acquire, and which can be co/contramapped
+  same idea could probably work for IORefs, TVars, etc. (modulo syntactic sugar)
+Can we unbox T* into structs and arrays, and just take a ref when copying it?
+  Getting confused by ownership intuitions again...
+  What if we have two arrays containing the same refs? Obviously can't unbox them both
+  Could represent as `enum Ref<T> { Here(T), There(&T) }`, with only one copy ever being `Here`
+    and maybe pointer tagging or other similar optimizations
+    "only unboxed in one place, and everywhere else just refers to it" happens to match what happens in C/C++/Rust
+    But is it worth it?
+    runtime discriminant checks... if we have to store the discriminant separately it's almost def not worth it(?)
+    can always pointer-tag the `There` refs though?
+  does it make any sense to make these separate types?? `Mut(T)` and `T*` or so
+    would basically have to keep Mut(T) from getting copied in memory...
+    probably doesn't make sense without linear types?
+  think we actually _can_ have `MutArray(T)` which gives out `T*` to indices instead of get/set
+    that's at least non-horrible
+    (how does it know what the lifetime is, or if there even is one? but maybe it's a built-in anyways)
+    can this generalize?
+    a MutFoo is like a Foo except where Foo has T fields, MutFoo gives out T* (for instance, records)
+      but that's only for "plain old data"
+      stuff with actual mutating methods like HashMaps, not so much
+      key fact about HashMaps is the read-only methods are only impure because someone might call the write-also ones
+      is there any way we can restrict people to only the readers? (maybe a phantom type?)
+        also how to tell the type system whether it's pure? an effect parameter? :\
+          actually that could also do the job of restricting the callable methods :( (maybe?)
+          actually... maybe this could have the same syntax for specifying effects as fns
+          `mut HashMap`, etc., defaulting to pure
+        you'd also still need a way to deep-copy to be able to transition between them
+
+effect-typed data for mutability polymorphism
+  syntactically effect arguments are adjectives preceding the type name, e.g. `pure HashMap`, `mut HashMap`
+  read-only methods are effect-polymorphic, mutating methods require a `mut HashMap`
+  this works out nicely: read-only code can be shared between pure and effectful computations without annotation
+    (effect-polymorphism is the default)
+  but how does the type system know, or how does HashMap declare that it _has_ an effect parameter?
+  does _every_ type have an effect parameter?
+    both `Int` and `mut Int`?
+    spider sense says this is probably wrong, will probably realize why
+  this _does_ mean we can have both pure `Array(T)` and `mut Array(T)` and have the latter be efficient and indirection-free...?
+    fn at(Array(T)) -> T*
+      -> fn at(const Array(T)) -> const Ref(T) (`const T*` seems ambiguous: `const T` or `const *`?)
+         fn at(mut Array(T)) -> mut Ref(T)
+      is it "obvious" that effect polymorphism should work this way?
+    perhaps `arr[i]` should translate to `*arr.at(i)` and `arr[i] = x` to `*arr.at(i) = x`
+      should `&arr[i]: T*` work?
+      could/should we even have an `&` operator?
+  does this also let us have records with unboxed mutable fields..?
+    it works for arrays and hashmaps because those are always represented as a pointer
+    but if we want to pass/store records by-value, that won't really work
+    is there a different/better solution? (is it important?)
+    what if we give up on the unboxed representatation? would it work?
+    what if specialize based on effect types too?
+      we want something like this for memoizing const fns but not other fns anyways...
+      is there any reason this couldn't be possible? (are effects different from types in some critical way?)
+      what would the performance drawbacks be? more expensive freeze/thaw?
+  OK, so we have runtime-fixed-length arrays with (a) mutable and (b) immutable elements
+    what about mutable elements and mutable length (Vec), or even immutable elements and mutable length?
+    or rather, it's not just mutable length but being able to insert/remove elements at any point
+      though this can be seen as just pushing/popping and shifting-by-assignment
+  what about things like `io Array(T)`? do we want that? can we have it?
+    how do we avoid memory-unsafe data races esp. with unboxed elements?
+    what about `atomic Array(T)`?
+    can we conceivably have a `Mutex(T)` type like in Rust in `io` with local `mut` borrowing?
+      would this make sense?
+        io fn withLock(type T, type Result, mutex: Mutex(T), op: fn(contents: mut Ref(T)) -> Result) -> Result
+          how do we ensure that:
+           * `op` is taken to be a `mut fn` which mutates only(?) `contents`
+           * `Result` may not contain `contents`
+           * `withLock` itself is *not* taken to be a `mut fn`?
+          also, how much of this is stuff we could theoretically infer if we wanted to?
+           we probably want the `mut` there to be explicit
+             what's the broader policy? non-polymorphic effects should be explicit?
+      what else is there: RWLocks, Chans, ...?
+      (though our larger plan is STM or concurrent revisions...?)
+    what about `io File` and (scoped) `mut File` to solve the resource management problem?
+      is it a bad idea to tie scoping to mutability?
+      actually, `mut File` is nonsense because it's impure even if scoped.
+      is `mut io File` also nonsense? here we're /really/ just adding the `mut` to mean "scoped"... bah
+  also does this shed any light on the distinction between mutable local variables in fns and references to them?
+
+"Most programming languages start out aiming to be simple, but end up just settling for being powerful."
+http://dave.cheney.net/2015/03/08/simplicity-and-collaboration
+
+"I’m told one of the very big reasons Lua is amenable to embedding is that it’s trivial to disallow IO: you just don’t have the io module."
+
+People will be coming from:
+  JavaScript
+  C#/Java/Swift
+  Ruby/Python
+  Scala, F#, Haskell, OCaml, Lisp, ...
+
+cultural syntactic choices:
+  C-style curly braces
+  optional line-end semicolons? (or like Rust?)
+  use `var` instead of `let`?
+  dot: field access, method call, composition, ...?
+  arrow: lambda, composition, ...?
+  foo(x): anonymous fields, punning, ...?
+  radically: _remove_ normal function calls, have _only_ method syntax?
+    means you can simply read code left-to-right, always
+    also means you always need a `this` argument?
+      on the other hand, declaration syntax should mirror use syntax
+    does this break our arguments-not-ordered stuff?
+      what about calling a function with pre-constructed record?
+    also require parentheses around any not-completely-obvious operators? (i.e. other than basic arithmetic)
+    and require spaces around infix operators
+    and no glob imports? (if it's good enough for Go...)
+    likewise no while, just loop (what about for?)
+  having multiple equivalent ways to write the same thing is something to _avoid_?
+  syntactic inspiration: JavaScript, Markdown, C, DOS/Unix
+  numeric literal suffixes: 1i Int, 2u UInt, 3f Float (double)
+
+informal language
+  "avoid jargon (terms of art?) whenever possible"
+  identifier/symbol/label -> name
+  mutate    -> modify? destructive update? change?
+  variant   -> case
+  sum type  -> enumeration, either, choice, switch, union, variant, disjunction, select, divide, ...?
+  struct    -> record, aggregate, composite, ... group?
+  field     -> member?
+  pure      -> stateless? const!
+  fmap      -> inside?
+  aliasing  -> sharing
+  mod(ulus) -> rem(ainder)?
+  overload  -> ??
+
+misc syntax
+  what about a postfix % operator which is equivalent to (/ 100)?
+    65% -> 0.65
+    kinda pointless but maybe nice, after all humans write 65% instead of 0.65 for a reason
+    actually probably not a postfix operator - only on literals! (a + b)% ugh
+    so `%` is essentially a suffix, an alternative to `f`
+  we should have some kind of HOF sugar... perhaps a fn argument with a particular name can be provided as a trailing block?
+    what if it has arguments?
+    though we /know/ what its name will be... would it be evil to just bring it into scope? (yeah, maybe)
+  perhaps we want sugar for `let x = foo.x, y = foo.y, ...`
+    `let (x, y) = foo` a la Rust?
+    `import x, y from foo`?
+      `import foo.(x, y)`?
+    what about construction vs. matching duality (incl. fn named args) and renaming?
+      `let (x as myX, y as myY) = foo`
+      `foo(x myX, y myY)` OR `foo(myX as x, myY as y)`?
+        `let (x myX, y myY) = foo` or `let (myX x, myY y) = foo`??
+  how do we deal with import conflicts? just shadowing? seems unfortunate? just warn?
+  #inline, #inline(please), #inline(force), #inline(never), likewise #specialize
+  how do we resolve `foo.bar()` as `(foo.bar)()` vs. `bar(foo)`???
+    would be unfortunate to actually require `(foo.bar)()` :\
+  if `foo.bar()` is just `foo(bar)`, and type application is just `foo(T)`...
+    ...does that mean you could also do `T.foo()`?
+    `Int.newArray()` e.g.
+    why not?
+      perhaps this would conflict with the possibility of `(Int.newArray)()`...
+      which is the same problem as above
+  really feels like we want different notation for member access and method calls :-(
+    but the whole reason we want both is familiarity (and for methods, because left-to-right is nicer)
+    other options: a->b, a/b, (a, b).(c, d)
+  operators are just special syntax for particular names - `a + b` always unconditionally desugars to `add(a, b)` (or `a.add(b)`) *everywhere*
+    do we also want to overload function calls as "call"?
+      closures would be `type fn(A) -> B = (type Env, env: Env, call: rawfn(Env, A) -> B)`
+        hmm... this doesn't  actually work?
+        how would/could Rust's approach be transliterated?
+      also this would presumably involve losing eta - is that bad? did we have it?
+  presumably we'd also want range types like in Rust? `1...5` etc.
+    literals vs. patterns vs. types ...
+  `new` treats a pure thing as impure for generativity? (~ Sylph)
+  have a `HardwareTypes` module for things like `Int8`, `UInt32`, etc. (and maybe `Float32`/`Float64`) (and maybe SIMD stuff?)
+    can we have SIMD-sized records automatically be represented as SIMD?
+    if the only restriction is no interior references... (also alignment?)
+
+keywords:
+  decls:   let, fn, extern, type, case
+  effects: const, mut, io, atomic, dangerous, throws, returns
+  control: match, if/else, for/loop/while, continue/break, throw/try/catch, yield
+  misc:    is, in, as, do, this/that, with, where, pub/priv, auto, trusted
+
+names of effects should ideally read as adjectives
+  dangerous, mutable (or mutating), const (or pure), atomic, async, ...
+  but `io` doesn't really fit :\ but what else is there?
+    perhaps `active`? `global mut`? eh
+
+good things about Go:
+ * takes simplicity seriously, consensus required to add a feature
+ * explicit pointers
+ * interior references
+ * no glob imports
+ * interfaces (data/interface split, no inheritance)
+
+connection/interaction between "laziness", type inference, value restriction:
+  (infer effectful expressions as existentials?)
+
+an "effect" is basically anything where, given a HOF g(f) with parameter f, then g may do E iff f does E:
+  nontermination
+  non-local jumps: exceptions, setjmp/longjmp... (coroutines? callCC? nondeterminism?)
+  externally observable mutation, observation-of mutation
+  I/O
+  so that plain map() works like mapM in Haskell
+  also invariant violations! (`dangerous` and others)
+
+it's annoying that we want `:` to be "the" type ascription operator, but then record types `(a: Foo, b: Bar)` and values `(a foo(), b bar())` aren't symmetric
+can we actually overload `:` to mean _both_ type ascription and value binding, based on whether the RHS is a type or a value (uppercase or lowercase)?
+  this probably runs into problems once you get to signatures and impredicativity and things...
+  also, would we want to?
+  this is similar to being able to overload function application to types/terms based on lexical category?
+
+memory management
+  reference counting
+    + deterministic destruction (RAII)
+    + low latency
+    + can test whether rc == 1 (COW? what else?)
+    - cycles
+    - not good for interior pointers (need to hold a separate pointer to the rc!!)
+    - every heap object needs a reference count field
+    - lots of rc count twiddling
+    - RCs probably need to be atomic in the multithreaded case
+  tracing GC (many kinds)
+    + handles cycles
+    + can keep heap objects compact (if we avoid headers and use per-type tracing functions, which we should)
+    + at least have a reasonable hope of supporting interior pointers
+    - unpredictable pause times
+    - heap is like 4x larger? 2x once to keep garbage around until collection, 2x again for two-space
+    - need write barriers for generational, read barriers for incremental/concurrent(?)
+    - general complexity (barriers, finalizers, weak refs, stable/foreign ptrs, card marking, ... ugh)
+  also region-based...?
+    need to learn more, but probably hard-to-predict and volatile?
+    (static vs dynamic regions?)
+data representation
+  boxing
+  "intensional type analysis"
+
+Intensional type analysis
+  Types are not (necessarily) erased
+  Where there is a `type` in a record or a function arg/ret, that actually has a runtime representation (likely size+alignment)
+  Get to use unboxed data and specialized functions everywhere(?)
+  Monomorphic code is fast, polymorphic code that can be inlined/specialized is fast
+  Polymorphic code that can't be inlined/specialized (RankNTypes?) is slow (probably Really Slow)
+  But even in that case can we just make the function switch-case to a particular specialized instantiation?
+    With actual Really Slow runtime offsetting and stuff only as the ultimate fallback?
+    In what conditions would we still need the fallback?
+    How many different specializations would we need in practice? Just one for each (Size, Alignment)? How many different ones occur in practice?
+    What about the "behavioral specialization": templates+overloading / traits / etc.?
+      Does this just correspond to inlining of HOF arguments? and/or module arguments. probably.
+    What if the required specialization is in the caller's library, not the function's??
+      Perhaps use a slower path to try to dispatch to these, global hash table or weak linking or something?
+      switch-case local specs -> lookup remote specs -> fallback slow poly code
+  And what about for existentials? (Do we even have that kind of clear distinction in our 1ML-ish system?)
+    We just store the size/alignment, and the poly. function switch-cases on it as appropriate?
+    This is _better_ than the boxing story because we get to store it unboxed?!
+      does it let us store it unboxed, or just store it at all (behind a pointer)??
+      if the latter what's the precise rule for when an existential-y type is repr.-ed as a pointer?
+        (type T, (Int, T)) is that `(Type, *(Int, T))` or `(Type, (Int, *T))`? or `*(Type, (Int, T))`?
+        probably the first? if we learn what T is, we should be able to pass (Int, T) to a function that expects it as-is
+    (Still the question of the HOF arg inlining)
+  Potential niceness of ITA is it provides a gradual/seamless transition between whole-program and separate compilation, which are opposite extremes...?
+    Choose how much of the program the optimizer gets to see at once, and speed will scale accordingly (if not linearly)
+    Don't have to implement a whole-program and a separate-compiler separately; both of them fall out
+  This also solves the Array vs. ByteArray problem! can just have Array(Byte) and it'll work
+    if we no longer require uniform repr, does that also let us play other advanced tricks with "nonparametric" optimized representations??
+      what does a generic version of a function over Option<T> look like if the repr of Option<T> depends on T?
+      needs to know size/alignment, okay... what else? how to construct / deconstruct (pattern match)?
+      and call other fns, but those can also be depended upon to have generic impls
+      ("torture test") what about higher-order, higher-rank, _and_ higher-kinded functions?
+  Can we store size+alignment in a more efficient way? Size as multiple of alignment? Alignment probably does have a fairly small upper bound (modulo SIMD)?
+  How to represent records is still a tough question... they are so fundamental, and hard to optimize both field access and update
+    Could represent it like C structs, but then updates suck, and maybe subtyping too
+    Or some HAMT-like thing, but then indexing and locality suffers
+    (Indexing is even worse if field size isn't constant?)
+    Bigger question is actually passing a larger record to a function which wants only part of it
+      Having to make a copy sucks!
+    If we do this kind of row-polymorphically we can just take the same strategy:
+      In the slow general case field offsets are passed at runtime
+      Aggressively inline and specialize for the row variables functions are actually instantiated with
+      The polymorphic impl first tries to dispatch to a specialized impl before falling back on the slow runtime-evidence version
+      ...but what would we actually switch-case _on_? what identifies a row type? ..perhaps the actual field offsets?
+        can this actually be efficient? would the combinatorial explosion not swamp any gains?
+          i.e. is it actually cheaper to dispatch based on the offsets than to just fetch the data using them?
+          though the specialized versions could of course themselves be inlined into the general one, and further optimized
+      row-polymorphism substitutes for subtyping here, but what about _returning_ records, sum types, etc.?
+      if we do specialized representations like bit-packing bools then these would probably have to be something like _functions_? (lenses?)
+      there's a big difference between every type having a different representation that's unboxed, and the representation _depending on the containing type_
+  Also where do the pointers go? Where are they necessary? E.g. recursively-typed structures? Given equirecursive types
+    Calculate loop breakers? Seems bad for predictability
+    Can we allocate a whole structure inline if we know it up-front? (a la proposed recursive unsized enums in Rust?)
+      This only works as long as the structure doesn't branch?
+      Also, _mutual_ recursion
+  How do the size/alignment of record and variant types depend on their rows?
+  other potential benefits: easier/better compatibility with foreign types, easier/better interpreter-compiler compatibility?
+  what other things are part of the runtime representation of a `type`?
+    a GC routine? a type ID? a type / layout description? a name? a pretty-printer routine for debugging?
+    (probably these would not be monomorphized but in terms of other types? at least for generic types...)
+  if everything is semantically by-value (except mutable references), and we neither have everything-is-a-pointer unirepr, when do we actually _need_ to use pointers??
+    (for recursive structures? precisely when?)
+      recursives types vs. recursive data vs. recursive functions
+      if we think in terms of fixpoint operators a recursive-occurrence is also an abstract type
+    if we have more freedom to choose object reprs/sizes, does that also give us more freedom in terms of memory management schemes?
+      e.g. if we not every integer but only larger (define larger) structures need reference counts, does RC become more practical?
+    compare/contrast with DSTs in Rust...
+      can we make a new type for each closure and specialize based on it, even if this is not apparent in the source?
+        possibly for fns, unboxing/specializing into composite types seems like a taller order
+          seems like it should be possible for whole program opt., at least? (but how, and can it be incrementalized?)
+        also, specialization and unboxing are independent
+          &Fn() vs. &F where F: Fn() vs. F where F: Fn()
+        should also be careful not to counterproductively destroy sharing
+        where of course our `fn(a: A) -> B` is `(Env: type, env: Env, fn: rawfn(env: Env, a: A) -> B)`
+          so perhaps we can do transformations on that basis
+          (should we actually expose this???)
+  this also lets us nicely do the per-type specialized GC tracing function stuff
+    what costs do we have to pay for generational/incremental/concurrent collection?
+
+"bob Harper et all did prove a few years ago that certain gc strategies do result in cache optimal memory layouts"
+"However, it does still have an ongoing cost - memory is "rented" in a GC, rather than "bought" and "sold" as with malloc/free. The goal is to reduce the ongoing cost as much as possible, which is what generational GC aims at, by looking at older objects less frequently." - Simon Marlow
+https://ghc.haskell.org/trac/ghc/ticket/9052 stable generation
+
+is fn(T: type) -> Int { 3 } (a polymorphic value) actually represented as a function?
+  do we even have such a thing as a "polymorphic value"?
+  does it depend on whether the fn is pure?
+    it also has to be total, or value-like
+
+first-class (built-in) Future/Event type (construct)? 
+  "We then discuss the future construct, where the evaluation of its argument proceeds in parallel with the remainder of the computation." (~call-by-need)
+  perhaps this is another kind of effect, `future fn()` or `parallel fn()` or so?
+    (why) does it even need to be a separate type?
+    "We can think of a thunk as a reference that we can write only once (the first time it is accessed) and henceforth will continue to be the same value."
+      `fn()` ~ Thunk ~ IVar ~ Event ~ Future ??
+    But the whole point of Events in FRPNow is that they are effectful! so we actually want `io fn()`?
+      can we have a thing where starting the IO is effectful but waiting on its result is pure? (so an `io fn()` -> `pure fn()` transformerish)
+        does this make any sense?? rethink when sober...
+        --
+        async :: IO a -> Now (Event a) 
+        callback :: Now (Event a, a -> IO ()) 
+        --
+        new :: IO (IVar a)
+        write :: IVar a -> a -> IO ()
+        read :: IVar a -> a
+        --
+        these look very similar, but then how come there's no Event a -> a??
+      this sounds like the whole point of `Event`s in FRPNow... also sounds like what IVars do (write-once)
+    different names for (almost the?) same thing: Future, Event, Async, IVar, ...
+    is C#'s async/await also the same thing??
+      and what's the relationship between these and coroutines?
+    is `async` an effect??
+      if it is then what about Behaviors?
+      after all they're both a bit function-like...
+      behaviors non-blocking but return different results at different times, futures always return same results but may block
+      are these perhaps dual in some way?
+      is a behavior anything other than an impure but side-effect-free function?
+        (but then what's the whole thing with push vs. pull...?)
+  also reminiscent of GHC's safe/unsafe foreign imports (~sync/async in FRPNow)
+  what about Behaviors? Promises? EventStreams?
+
+what's the deal with "types can't depend on values", but using runtime branches to select different actual-types for an existential is something we want?
+  can't use runtime branches to choose different _concrete_ types, but abstract types are OK (unknown at compile time anyways)?
+  what's our distinction between concrete and abstract types?
+  probably this is the `type T` vs. `type T = Foo` distinction in ML? (which we'd like to avoid...?)
+  perhaps we want something like a lowercase record/value containing an uppercase thing (type) is abstract/dynamic/runtime?
+    need to make this more precise... a type itself can't be lowercase, right? just a "value" (an existential)
+    for function calls (unnamed temporaries), depends on the case of the function name?
+      lowercase functions are forall, uppercase functions are type families
+    if you put an uppercase-function-call into a lowercase-result, that makes an existential too? (but can't do the reverse)
+    (how) do lambdas know whether they're lower or uppercase? do they need to??
+    does calling a forall with an unpacked existential work as expected (a la Daan Leijen / MLF)?
+      given myExistential: (T: type, foo: Foo(T))
+        and myPolyFn: (T: type, bar: T) -> Baz
+      the question is whether we call `myPolyFn(T (T type, foo: Foo(T)), bar myExistential)`
+                                   or `myPolyFn(T Foo(myExistential.T), bar myExistential.foo)`
+      where what we want is to "unpack if and only if we need to"? (example above: no)
+      actually is this just the difference between writing `myPolyFn(bar myExistential)` and `myPolyFn(bar myExistential.foo)`??
+        sure seems like it...
+    what do we actually want this for: a replacement for abstract `type Foo` in ML, whereas `type Foo = Bar` is replaced by parameterized pure fns??
+    what's the relation to / interaction with impredicativity? (that seems to be just foralls/exists and not type families, but 1ML seems to suggest otherwise?)
+
+we may have type-level functions, but they're not like type families in Haskell, because they can't pattern match on types...
+  do we want to??
+  or perhaps the thing to pattern match on is generatively (impurely) generated abstract types...?
+  or perhaps if we can have records containing types, we can also have cases/variants, and match on those?
+  this raises the question of when/where cases/variants live... do they have a lower/uppercase distinction too?
+
+the type system is just a layer over an untyped substrate?
+  improves flexibility/expressiveness, integration with other untyped langs
+    can dynamic-cast an untyped record into a typed one with specific fields/types?
+    also `eval(program: String) -> T?`, program is untyped, check it against `T` before trying to eval
+  can just make type errors into warnings, and run it anyways, "let the chips fall where they may"
+  insert dynamic checks for untyped code which can be elided for well-typed code?
+
+use $N suffix to refer to the Nth field with the given name?
+  foo$1, foo$2, etc.
+  for unnamed (tuple) fields, simply $1, $2, etc.
+  fn add_ints(Int, Int) { $1 + $2 }
+  if parameter can be given a reasonable name, no reason for both callee /and/ caller not to use it
+  (how does this relate, if at all, to Swift's compact closure syntax?)
+    normally you'd write fn(x, y) x + y
+    but if you want x, y to be anonymous?
+    can't very well write _neither_ the name nor the type...
+    `fn(Int, Int) $1 + $2` (not shorter)?
+    `fn(,) $1 + $2` (can't distinguish nullary vs unary)?
+    `fn(_, _) $1 + $2`?
+    `fn(...) $1 + $2`?
+    `fn $1 + $2`?
+    `$1 + $2` (what's the scope)?
+  is accessing a tuple field then also `foo.$1`? or is the rule that you need $ only if you want to specify _both_ the name and the position?
+  (is there any way to refer to the full tuple of fn arguments itself? `args` perhaps? do you want to? can you splice `args` into another fn call as-is? do you want to?)
+  still potentially ambiguous: tuple type vs. tuple of types?
+  also how to disambiguate tuple-args from punning at calls?
+  also how does pattern matching on tuples work??
+    binding to names is for records, pushing $N into scope is weird..? (or not?)
+
+we can't actually forbid the possibility of functions with non-record domains if we also want to have contramap
+  ...or can we? (spoiler: seems like we can!!)
+  let's take fn area(x: Int, y: Int) -> Int { x * y }
+  area: fn(x: Int, y: Int) -> Int
+  contramap: (fn C -> A) -> (fn A -> B) -> (fn C -> B)
+  here (fn A -> B) is area, A = (x: Int, y: Int), B = Int
+  so the question is whether C can be anything other than a record
+  if we can't declare a function with a non-record domain, then... no!
+  still, how to handle `fn` /types/ is a good question
+  do we allow an abstract type variable to stand in for the domain, /even if/ it'll always be a record type?
+
+data Type = Type
+          | PrimType PrimType
+          | Record Row
+          | Enumeration Row
+          | Function (Set Effect) Type Type
+
+data PrimType = Int | UInt | Float | Array Type | MutableReference Region Type
+
+type Row = Map Name (NonEmptyList Type)
+
+data Effect = IO
+            | Mut Region
+            | Atomic
+            | Dangerous
+            | Throws (Map Name Type)
+
+A syntactic intuition: suppose sum types ("enumerations"?) are written (case foo: A, case bar: B)
+  what about (baz: C, case quux: D)? 
+    (should we also give fields a "sigil", say `let`?)
+    (is there anything which works well in both "record field" and "item/variable declaration" position?)
+      good: var, val
+      bad: let, def
+      actually... maybe def isn't so bad?
+        a module(-as-a-record), after all, is a collection of definitions
+      if we do this then tuples might stop looking like tuples though - `(def Int, def Int)`
+  would say you don't get to mix cases and fields
+  but what if you do?
+  a (...) would contain all of its fields and exactly one of its cases
+  (how nice/convenient/useful/intuitive is this?)
+  mathematically: PRODUCT(fields) * SUM(cases)
+  ugliness: if there are no cases it's a bottom type!! even if there are fields
+  so you always need at least one case, which is ugly
+  (though an enumeration with a single case is weird even w/o this)
+  is there any we can fudge this that doesn't suck?
+
+if we want to be nesting-level agnostic (no special treatment for top-level or local fns) then where does `return` return to?
+
+"scale invariance"
+  no distinguished "global scope" or "module scope"
+  large-scale structure is same as small-scale structure: records
+  separate <-> whole program compilation (intensional type analysis)
+    "Essentially, the more the dev is willing to tell us about their code, the more we should be able to reward them by speeding it up."
+    where "how much they're willing to tell us" -> "how much of the program the compiler gets to see at once"
+  scales from Lua to C#
+  there was another thing??
+
+What should our default non-integer type be??
+  Previously was thinking "just Doubles", but...
+  What about Doubles-without-NaN, where Double-with-NaN is `Double?`?
+    Also what about infinities, pos/neg zero, denormals, rounding modes, ....?
+      at least infinities are clearly ordered...
+    Need to learn about this stuff, or find someone who knows...
+      What does the IEEE specify? What does hardware support? What does Joe Programmer want? What does Jane Physicist want?
+  Or maybe Rationals (GCD)?
+  Or maybe continued fractions?
+    probably this!
+    question is trigonometry stuff...
+
+also: "Unicode is hard. Time is hard. Serialization is hard. Everyone is bad at all of them."
+  what else is everyone bad at? (^ floats)
+  unicode -> just copy Rust?
+
+if we memoize pure fns and also have threads then we need blackholing and stuff? :\
+
+Nonlocal control flow and concurrency things
+  return break continue goto
+  Exceptions
+  Yield / generators
+  Delimited continuations
+  Undelimited continuations
+  setjmp/longjmp
+  Coroutines
+  Async/Await
+  Future, IVar, FRP Event
+  Threads
+  Actor model
+
+Fully intended to compete with
+  Java
+  C#
+  Go
+  Swift
+Largely intended to compete with
+  JavaScript
+  Python
+  Ruby
+  F# (^?)
+  Scala
+  Haskell
+  OCaml
+Only incidentally intended to compete with
+  Rust
+  C++
+  Idris
+Not at all intended to compete with
+  C
+  Agda
+  Coq
+ 
+
+Things to read:
+  First-class labels
+  Frank, Koka, Eff
+  Functional database
+  1ML
+
+Blind spots
+  Subtyping
+    Can we just do it with parametric polymorphism?
+    E.g. effects can also be like row types (Koka)?
+    What else do we want it for?
+  Type inference
+  Existentials vs. associated types / compile-time|runtime / known|unknown types / translucent/singleton types ...
+    maybe uppercase-in-lowercase is existential, and translucent/singleton types are handled by pure fns (parameterization over fibration)?
+  Overloading
+    Something like OCaml implicits / modular typeclasses?
+    (what about the method-namespacing problem?)
+  Lenses/prisms?
+
+
+
+what about the opposite - worst (non-turing-tarpit) language conceivable
+  manual memory management
+  undefined behavior
+  dynamic types
+  unchecked exceptions
+  automatic conversions, including strings
+    user-definable automatic conversions!
+  single number type - 32-bit float
+  dynamic scope
+  user-defined operators
+  automatic overloading
+    specialization?
+  nulls - even multiple kinds?
+  "object-oriented" - but top type is void*?
+  
