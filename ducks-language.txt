@@ -1975,6 +1975,17 @@ What should our default non-integer type be??
     probably this!
     question is trigonometry stuff...
 
+The status of Int
+  We want to be able to pattern match on it
+  Everything you can match on the cases of should actually be an enumeration
+  So Int should be an enumeration (case 0, case 1, case 2, ...)
+  These could actually be exactly "anonymous (duplicate) cases"! (dual to tuples)
+  type OneTwoThree = (case 1, case 2, case 3) - "subtype" of Int
+  type Maybe(T) = (case 1(T), case 0)
+  but _actually_ this is all about `UInt`!
+  You can't have duplicate-labels at negative indices
+  So what actually is the status of *Int*? Add a sign bit? Something else?
+
 also: "Unicode is hard. Time is hard. Serialization is hard. Everyone is bad at all of them."
   what else is everyone bad at? (^ floats)
   unicode -> just copy Rust?
