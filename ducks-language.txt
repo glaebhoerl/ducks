@@ -1562,6 +1562,10 @@ effect-typed data for mutability polymorphism
       though this can be seen as just pushing/popping and shifting-by-assignment
   what about things like `io Array(T)`? do we want that? can we have it?
     how do we avoid memory-unsafe data races esp. with unboxed elements?
+      we probably don't want it, because of data races, even special `atomic` methods doesn't help because `read` is polymorphic
+      atomics could only work on `Ref(T)` because/if it's guaranteed to always have the same size
+        that's if we (perhaps intentionally) don't specialize the representation of `const Ref(T)` to just be `T`
+        and anything else that's also word-sized, but how does that work? esp without typeclasses?
     what about `atomic Array(T)`?
     can we conceivably have a `Mutex(T)` type like in Rust in `io` with local `mut` borrowing?
       would this make sense?
@@ -1580,6 +1584,17 @@ effect-typed data for mutability polymorphism
       actually, `mut File` is nonsense because it's impure even if scoped.
       is `mut io File` also nonsense? here we're /really/ just adding the `mut` to mean "scoped"... bah
   also does this shed any light on the distinction between mutable local variables in fns and references to them?
+  how do we define type aliases which can have effect arguments?
+    e.g. we might want `Iterator(T)`, `const Iterator(T)`, `io Iterator(T)`, `atomic Iterator(T)`, etc.
+    potential solution: _every_ type alias implicitly has an effect parameter
+      which is used to instantiate _all_ free effect variables in the type definition (RHS)
+      so you _can_ write e.g. `io Int` it's just not useful
+      if you don't explicitly write effects it's implicitly polymorphic
+        does this not cause problems if _everything_ has an effect variable?
+        in a function def, _every_ type in it is instantiated with the same effect var?
+          would we not get confusing error messages where one produces `mut Int`, and the other `const Int`?
+      if you _do_ explicitly write an effect, does that mean "at least this effect" (still polymorphic), or "no other effects" (mono)?
+        look at Frank?
 
 "Most programming languages start out aiming to be simple, but end up just settling for being powerful."
 http://dave.cheney.net/2015/03/08/simplicity-and-collaboration
@@ -1626,6 +1641,7 @@ informal language
   aliasing  -> sharing
   mod(ulus) -> rem(ainder)?
   overload  -> ??
+  nontermination -> divergence?
 
 misc syntax
   what about a postfix % operator which is equivalent to (/ 100)?
@@ -1669,6 +1685,8 @@ misc syntax
   have a `HardwareTypes` module for things like `Int8`, `UInt32`, etc. (and maybe `Float32`/`Float64`) (and maybe SIMD stuff?)
     can we have SIMD-sized records automatically be represented as SIMD?
     if the only restriction is no interior references... (also alignment?)
+  what should the entry point be? just have `main()`?
+  we could use `where` for both refinement types and comprehensions
 
 keywords:
   decls:   let, fn, extern, type, case
@@ -1726,6 +1744,20 @@ memory management
   also region-based...?
     need to learn more, but probably hard-to-predict and volatile?
     (static vs dynamic regions?)
+    apparently Ur uses this?? look into it!
+      "any expression of a pointer-free type may be evaluated in its own region, since there is no way for pointers to flow indirectly from within an expression to the rest of the code"
+        complications here... mutability of course, so we also need the expression to be pure
+        what about `const fn()` memoization?
+          we would need to have these allocate in the region /they were created in/, not where they're forced... iow they would have to capture the region
+            is this bad for any reason?
+      "We note that this simple region-based memory management is not suitable for all applications. Rather, it is tuned to provide good performance for typical Web applications that avoid heavy computation, focusing instead on querying data sources and rendering the results. Many classic applications of functional programming will be poor fits for the model."
+        can we still perhaps _mix_ this with GC though?
+        like, make a region for pure expressions returning pointerless values?
+        this seems like a similar optimization as generational gc... except no tracing required
+        in this scenario the region would give us a guarantee that the given memory can be deallocated at that point
+        but perhaps the GC could come in and free up parts of it if the function takes too long and allocates a lot?
+        could we reserve GC for only those stack-records (and their transitive closures... :\) which end up referenced by returned closures?
+
 data representation
   boxing
   "intensional type analysis"
@@ -1806,8 +1838,12 @@ Intensional type analysis
         where of course our `fn(a: A) -> B` is `(Env: type, env: Env, fn: rawfn(env: Env, a: A) -> B)`
           so perhaps we can do transformations on that basis
           (should we actually expose this???)
+    things which are already "pointer-like" (sizeof Foo(T) constant forall T):
+      Ref(T), Array(T), fn(T), fn() -> T
+      (and presumably the compiler can track these through user-defined types because the observable semantics stay the same unlike Rust?)
   this also lets us nicely do the per-type specialized GC tracing function stuff
     what costs do we have to pay for generational/incremental/concurrent collection?
+  can we make an interpreter, separate-program, and whole-program compiler all binary-compatible?
 
 "bob Harper et all did prove a few years ago that certain gc strategies do result in cache optimal memory layouts"
 "However, it does still have an ongoing cost - memory is "rented" in a GC, rather than "bought" and "sold" as with malloc/free. The goal is to reduce the ongoing cost as much as possible, which is what generational GC aims at, by looking at older objects less frequently." - Simon Marlow
@@ -1815,6 +1851,7 @@ https://ghc.haskell.org/trac/ghc/ticket/9052 stable generation
 
 is fn(T: type) -> Int { 3 } (a polymorphic value) actually represented as a function?
   do we even have such a thing as a "polymorphic value"?
+    I think not!
   does it depend on whether the fn is pure?
     it also has to be total, or value-like
 
@@ -1863,19 +1900,27 @@ what's the deal with "types can't depend on values", but using runtime branches 
     does calling a forall with an unpacked existential work as expected (a la Daan Leijen / MLF)?
       given myExistential: (T: type, foo: Foo(T))
         and myPolyFn: (T: type, bar: T) -> Baz
-      the question is whether we call `myPolyFn(T (T type, foo: Foo(T)), bar myExistential)`
+      the question is whether we call `myPolyFn(T (T: type, foo: Foo(T)), bar myExistential)`
                                    or `myPolyFn(T Foo(myExistential.T), bar myExistential.foo)`
       where what we want is to "unpack if and only if we need to"? (example above: no)
       actually is this just the difference between writing `myPolyFn(bar myExistential)` and `myPolyFn(bar myExistential.foo)`??
         sure seems like it...
     what do we actually want this for: a replacement for abstract `type Foo` in ML, whereas `type Foo = Bar` is replaced by parameterized pure fns??
     what's the relation to / interaction with impredicativity? (that seems to be just foralls/exists and not type families, but 1ML seems to suggest otherwise?)
-
-we may have type-level functions, but they're not like type families in Haskell, because they can't pattern match on types...
-  do we want to??
-  or perhaps the thing to pattern match on is generatively (impurely) generated abstract types...?
-  or perhaps if we can have records containing types, we can also have cases/variants, and match on those?
-  this raises the question of when/where cases/variants live... do they have a lower/uppercase distinction too?
+  how do I define a module with one type abstract and another concrete?
+    is this the same lower- vs. uppercase distinction as before?
+    can we apply it more fine-grainedly than an entire module...?
+    but *surely* we wouldn't want to lowercase the type itself?? :)
+  types (compile-time) can't depend on values (runtime) <=> generative functors (compile-time??) are impure functions (runtime??) ??
+  we may have type-level functions, but they're not like type families in Haskell, because they can't pattern match on types...
+    do we want to??
+    or perhaps the thing to pattern match on is generatively (impurely) generated abstract types...?
+    or perhaps if we can have records containing types, we can also have cases/variants, and match on those?
+    this raises the question of when/where cases/variants live... do they have a lower/uppercase distinction too?
+      (case foo: Int, case Bar: Type) doesn't seem to make sense
+      what about (case Foo: Type, case Bar: Type)?
+      what about (case Foo: Type, case Bar: fn(Type) -> Type)?
+      what about (case Foo: Type, case Bar: (Type, Type, Int))?
 
 the type system is just a layer over an untyped substrate?
   improves flexibility/expressiveness, integration with other untyped langs
@@ -1973,7 +2018,10 @@ What should our default non-integer type be??
   Or maybe Rationals (GCD)?
   Or maybe continued fractions?
     probably this!
-    question is trigonometry stuff...
+    can we optimize the representation to store small-enough numbers unboxed?
+      (where small-enough means... what? requiring less precision? smaller integer part and fewer consecutive zeros in decimal?)
+    just require conversion to float for trig stuff?
+    name: Fract? Real?
 
 The status of Int
   We want to be able to pattern match on it
@@ -1985,12 +2033,31 @@ The status of Int
   but _actually_ this is all about `UInt`!
   You can't have duplicate-labels at negative indices
   So what actually is the status of *Int*? Add a sign bit? Something else?
+    What's the nicest way to do this that avoids having +0 and -0?
+  This is also connected to whether indexing (incl. presumably field/variant duplicates) starts at 0 or 1
+    Probably this should determine that?
 
 also: "Unicode is hard. Time is hard. Serialization is hard. Everyone is bad at all of them."
   what else is everyone bad at? (^ floats)
   unicode -> just copy Rust?
 
 if we memoize pure fns and also have threads then we need blackholing and stuff? :\
+
+Type inference: BiDi seems like a solid starting point?
+  Simple & obvious
+  Type inference of top-level things feels weird/magical...
+  What was the better-than-BiDi thing I saw somewhere...?
+
+In the ownership model the GC itself is an "owner"
+  If you have multiple GCs, shared data must be reference counted, an increment for each *GC* holding a reference
+  The reason GC (otherwise) gets to move stuff around on the heap is because its reference count, in this sense, is 1
+  Interpretations of "owns" as "may deallocate/invalidate" and "has a pointer to"
+    Normally for a GC-ed heap, neither is allowed for anything outside of it
+
+the function-that-starts-up-the-runtime-and-calls-main gets passed
+  how to handle oops() (devel builds with interactive terminals: open a console??)
+  how to handle/print debug()
+  how to allocate?
 
 Nonlocal control flow and concurrency things
   return break continue goto
@@ -2062,5 +2129,7 @@ what about the opposite - worst (non-turing-tarpit) language conceivable
   automatic overloading
     specialization?
   nulls - even multiple kinds?
+    null, undefined, NaN, 0, "", [], ...
+    which of these should be conflated and which not? :)
   "object-oriented" - but top type is void*?
-  
+  provide convenient implicit behavior iff it is likely to be confusing and error-prone :)
