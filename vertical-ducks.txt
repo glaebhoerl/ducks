@@ -56,12 +56,13 @@ primitive Relation type...? persistence? purity?
   what do propositions do relations correspond to? (is this trivial?)
   traditional rel. algebra requires knowing at least equality on types, prob. others (ordering, hashing)
 connections:
-  views -> functions, behaviors?
+  views -> functions, Behavior(Relation)?
   transactions -> STM?
   persistent revision control -> functional revisions?
   queries -> monads (LINQ)?
   data integrity constraints -> refinement types?
   (what about lens?)
+  joins using discrimination?
 
 should there be any diff between in-memory and on-disk state?
   can stay performant with mmap, Cap'n Proto-like data repr.
@@ -73,6 +74,7 @@ should there be any diff between in-memory and on-disk state?
   can we do a copy-on-write thing where an earlier snapshot of the state is fsynced to disk while execution proceeds? (~ functional revisions?)
   optimization of Ducks code == SQL query optimization??
     what about rewrite rules?
+    "Do you know about Equality Saturation: A New Approach to Optimization? That approach could work well for relational algebra." --julesjacobs
   instead of a database library in the language, the database eats the language
   does this also mean other languages could embed Ducks as a database and query language instead of SQLite??
 
@@ -215,6 +217,8 @@ Similar "change the world" projects / people
   John A. de Goes
   Gary Bernhardt
   http://eev.ee/blog/2015/02/28/sylph-the-programming-language-i-want/
+  --
+  julesjacobs, gasche, neelk, pigworker, ... (just really smart)
 
 Should be usable as:
   * Data description language (Lua, JSON)
@@ -262,3 +266,10 @@ basic idea of smart constructors (/ curry-howard?) is "this value is guaranteed 
 > the “efficiency, productivity, generality: pick two” notion in language design
 
 "Compilers are things that throw away as much information about your program as possible. They are, by their very nature, actively hostile towards development. It’d be really nice if you didn’t need to actually compile until you were ready to deploy."
+
+sync/async channels ~ eager/lazy evaluation?
+  pi calculus: "evaluation is communication"
+  buffers ~ thunks
+  buffers growing too large ~ space leaks
+  async channels and lazy eval both allow more programs to run/terminate/w/e
+  

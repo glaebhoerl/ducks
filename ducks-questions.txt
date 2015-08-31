@@ -1,0 +1,58 @@
+TOREAD:
+  1ML
+  MLF, BiDi
+  First-class labels
+  LMS?
+  Prolog, Datalog? (Curry?)
+
+UPPER VS. LOWERCASE, MODULES, ...
+  --
+  foo: (type T, ...)
+  let X = foo.T; // can you do this?
+  let x = foo.T; // what about this?
+  --
+  fn f(b: Bool) -> Type { if b { Int } else { Float } }
+  fn F(b: Bool) -> Type { if b { Int } else { Float } }
+  --
+  B: Bool
+  --
+  T: Type
+  X: T
+  (how come impredicativity and type-level constants seem to be entangled...?)
+  --
+  We don't want singleton `(type T = Int, combine: fn(T, T) -> T)` types like ML, only abstract `(type T, combine: fn(T, T) -> T)`
+    Factored out: `type Monoid = (type T, combine: fn(T, T) -> T)` and `Monoid where type T = Int`
+  Instead of ML's translucent types and signature matching (which requires subtyping), we want to write:
+    `type Monoid(T) = (combine: fn(T, T) -> T)` and `Monoid(Int)`
+    Where does this leave us at a disadvantage?
+  If we want to eschew subtyping entirely, that means we also need a different solution for being able to apply different signatures to the same module
+    Can this actually work with row polymorphism?
+  What happens if we make Names, Rows, and/or Effects first-class things which can be elements of records, just like "normal" types?
+  Distinction between data abstraction and type abstraction?
+
+TYPE INFERENCE
+
+AD-HOC POLYMORPHISM, OVERLOADING
+  important part: be able to declare abstract interfaces, overload based on them (not just "best matching signature" a la C++)
+  one potentially key difference vs. MTC/MI is that we have Monoid(Int), not Monoid where T=Int
+  "A type class is an addictive, unprincipled, global, piecewise-defined, implicitly-applied partial function from types to a record." - right
+    can we maybe use type-level structural variants for this actually somehow...?
+
+SYNTAX
+  method calls
+  tuples
+  ...: ranges, splices/variadics, iterators?
+    alternative for ranges: `1 to 10`?
+    structurally, ranges are just records... so `1..10` or `1 to 10` is just sugar for `(from 1, to 10)`?
+    maybe `...foo` should actually be *the* syntax for "a row"?
+  []: arrays, iterators?
+  if records == modules, do we want two different flavors of record syntax?
+
+everything-is-a-record vs. mutability of individual variables / arguments
+  fn foo(mut x: Int) and fn foo(x: mut Ref(Int)) are manifestly distinct
+
+What should the runtime representation of effects be?
+  Are higher-rank effects something that can or should exist?
+  Either effects should be completely erased, or they should be treated "just like types"
+    We can't just monomorphize them away, because then effect polymorphism conflicts with separate compilation
+  If `const fn()` and non-const `fn()` work differently at runtime, that means they can't be completely erased...?
