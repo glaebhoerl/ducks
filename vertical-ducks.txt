@@ -187,6 +187,8 @@ Major platforms:
 
 "I think it's high time we started learning lessons of history. No one sane will ever start using a new language in their projects until you show them a few cool development tools supporting it, tell them a couple of success stories, and show a dozen of programmers working with that language and living close by. As for programmers, they will never - except probably for the youngest ones - spend their time and health on learning another "very best" language until you show them a few cool development tools (not a frob like Racer) and a couple of tens of thousands of ready-made libraries (not "experimental" or "unstable" or stuff like that), tell them a couple of success stories, and show them a dozen of open vacancies in their city or town."
 
+"Change Function = F (Perceived Crisis / Perceived Pain of  Adoption)"
+
 need to piggyback off of some existing library ecosystem... Rust???
 should be a strong glue language!! (a la Python... Julia?)
   http://docs.julialang.org/en/release-0.3/manual/calling-c-and-fortran-code/
@@ -218,7 +220,7 @@ Similar "change the world" projects / people
   Gary Bernhardt
   http://eev.ee/blog/2015/02/28/sylph-the-programming-language-i-want/
   --
-  julesjacobs, gasche, neelk, pigworker, ... (just really smart)
+  julesjacobs, gasche, neelk, pigworker, graydon... (just really smart)
 
 Should be usable as:
   * Data description language (Lua, JSON)
@@ -273,3 +275,22 @@ sync/async channels ~ eager/lazy evaluation?
   buffers growing too large ~ space leaks
   async channels and lazy eval both allow more programs to run/terminate/w/e
   
+
+"One of the nice things about the relational model is that rela-
+tionships between tables are external. That is, children point
+to the parents (foreign key 7→ primary key relationship) as
+opposed to from parents pointing to children. As a result,
+it becomes possible to create explicit relationships [29] be-
+tween types after the fact, without modifying the participat-
+ing types. This is important when we want to relate data from
+different sources. For example relating descriptions of CDs
+from a web-services with a CD collection in ITunes on a lo-
+cal machine. By adding support for explicit relationships in
+the language, we can navigate such relationship via the fam-
+iliar dot-notation instead of having to perform complicated
+joins using middle tables."
+
+UIs based on lenses
+http://zrho.me/posts/2015-08-23-optic-ui.html
+  can we adapt this to our structural records / enumerations?
+  (depends on the "how do we do lensy stuff" question...)

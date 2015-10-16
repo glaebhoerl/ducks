@@ -4,6 +4,7 @@ TOREAD:
   First-class labels
   LMS?
   Prolog, Datalog? (Curry?)
+  Shen? "The way Shen's pattern-matching, functions, reader macros, Prolog, type system and compiler-compiler all work together is a thing of beauty."
 
 UPPER VS. LOWERCASE, MODULES, ...
   --
@@ -15,6 +16,8 @@ UPPER VS. LOWERCASE, MODULES, ...
   fn F(b: Bool) -> Type { if b { Int } else { Float } }
   --
   B: Bool
+  fn f(B: Bool) -> Type { if B { Int } else { Float } }
+  fn F(B: Bool) -> Type { if B { Int } else { Float } }
   --
   T: Type
   X: T
@@ -29,30 +32,250 @@ UPPER VS. LOWERCASE, MODULES, ...
     Can this actually work with row polymorphism?
   What happens if we make Names, Rows, and/or Effects first-class things which can be elements of records, just like "normal" types?
   Distinction between data abstraction and type abstraction?
+    Data abstraction is a record where not all of the fields are exposed (private definitions)
+      This is private definitions in _modules_; private fields of _structs_ correspond to abstract types
+      Or does the below give us both? Seems like it might...
+      (There's not much algebraic/practical difference between an abstract type and a record type entirely consisting of an abstract row (struct with all fields private), but they are nonetheless different things?)
+    Corresponds to an existentially-quantified row?
+      let MyMod: (a: Int, ...) = (a Int, b Float, c Char);
+      (maybe some kind of `private` keyword that makes it _infer_ that way? or a different kind of record literal which inverts it and requires `public` to expose?)
+    And then I guess this would extend trivially to enumerations with existentially quantified rows as well ("private variants")... nice
+  What we essentially want: lowercase stuff is out of scope for uppercase stuff?
+    (And uppercase stuff is out of scope for lowercase, except on right of `:`?? cf pigworker System F oil/water)
+      no, that would mean we can't have modules (uppercase ones anyways) and access their lowercase components in terms...?
+      but if yes, does that mean we would have type-level constants...?
+        well, uppercase modules essentially _are_ type-level constants?
+        so the question is then only compile-time constants _of what types_...
+  How do we write a module exporting an abstract type? What about a module exporting a type synonym? Which is the easy one??
+    The default clearly has to be abstract(?), consider e.g. parametric polymorphic functions - they receive a type parameter as argument, and it is abstract
+    And in systems with translucent modules, `type T` (as opposed to `type T = Foo`) also means an abstract type
+    Questions:
+      * In systems with translucent modules, what do you actually _need_ `type T = Foo` for?
+        Instead of `(type T = Foo, foo: T)`, you can always write `(foo: Foo)`
+        To "forget" you can just extend the record with a `type T`, and existentially abstract it: `(type T, foo: T)`
+          This is nice, because it no longer involves subtyping
+        Sharing constraints... are handled by this kind of thing and/or parametrization-over-fibration?
+      * How do we export a type synonym? Why would we want to?
+        Relevant comparison: Rust modules and type aliases vs. abstract types, also consts and const fns?
+          `mod foo { const N: i32 = 5;         }` does the typechecker "know" that `N` is 5? (that's the whole point??)
+          `mod foo { const fn N() -> i32 { 5 } }` what about now? same deal?
+          `mod foo { type Foo = i32;           }` here everyone knows that `Foo = i32`
+          `mod foo { abstract type Foo = i32;  }` here only `foo` knows that `Foo = i32`
+        In each of the cases what is the "type" of `foo`? Does it matter?
+        How would we express each of the last two in Ducks?
+  What would `reflection` look like in this setting?
+    reify   :: forall a z. a -> (forall s. Reifies s a => Proxy s -> z) -> z
+    reflect :: forall s a. Reifies s a => proxy s -> a
+    fn reify(T: type, R: type, x: T, f: fn(X: T) -> R) -> R ??
+      IF this is OK... it essentially means we can instantiate uppercase parameters of lowercase functions with lowercase arguments???
+      How is this not dependent types??
+        Maybe because R should not contain uppercase stuff... or something?
+    what is the Haskell version actually _for_? making it be parametric? implicit passing?
+  Impredicativity + case-analysis (non-parametricity) is bad
+    We don't want typecase anyways, but what about for other uppercase things?
+    Can you compile-time branch on `B: Bool`?
 
 TYPE INFERENCE
+  the classic MLF example `choose id`
+    can be given two System F types
+      forall a. (a -> a) -> (a -> a)
+      (forall a. a -> a) -> (forall a. a -> a)
+    and the MLF type
+      forall (b >= forall a. a -> a). b -> b
+    which can be instantiated to either of the previous.
+  can we express that with Ducks types? (are Ducks types just System F-like, or more than that?)
+    if >= is something like a subtyping relation, can we use a function instead...?
+    System F types:
+      fn(T: Type) -> fn(fn(T) -> T) -> fn(T) -> T
+      (fn(T: Type) -> fn(T) -> T) -> (fn(T: Type) -> fn(T) -> T)
+    MLF type:
+      fn(B: ??? fn(T: Type) -> fn(T) -> T) -> fn(B) -> B
+      B is a supertype of ...
+      we need a function that can either instantiate the `T`, or leave it unchanged
+  higher-order (pattern) unification?
+  "unification-based type inference does not have a direction and this places severe constraints on how your lang can look like"
+  "for example, if your + operator casts operands to widest type of both, it will inevitably require annotations"
+  "every time you introduce an implicit cast you prevent inference from flowing in either direction across the cast" -- whitequark
 
 AD-HOC POLYMORPHISM, OVERLOADING
   important part: be able to declare abstract interfaces, overload based on them (not just "best matching signature" a la C++)
   one potentially key difference vs. MTC/MI is that we have Monoid(Int), not Monoid where T=Int
-  "A type class is an addictive, unprincipled, global, piecewise-defined, implicitly-applied partial function from types to a record." - right
+  "T type class is an addictive, unprincipled, global, piecewise-defined, implicitly-applied partial function from types to a record." - right
     can we maybe use type-level structural variants for this actually somehow...?
+
+DATA-GENERIC STUFF
+  what's our answer to `deriving`?
+  enable writing implementations generically over records/enumerations?
+    so it's "automatically available" for structural algebraic types based on their components
+    abstract types can just re-expose it
+  where does this approach fall short - what's the kind of thing where GHC.Generics isn't good enough and you really need Template Haskell? (data-generic vs. macros)
+  to make this really work we need to enable explicit(?) polymorphism over _everything_ - names, effects, rows, ...?
+
+MEMORY MANAGEMENT
+
+THREADING, CONCURRENCY, PARALLELISM
+  avoiding data races requires that we forbid sending mutable data across thread boundaries
 
 SYNTAX
   method calls
+    maybe instead of `foo().bar().baz()`, just `foo() bar() baz()` or `foo()bar()baz()`... but it's weird
+    maybe just
+      foo.bar    = field bar of foo
+      foo.bar()  = bar(foo)
+      foo->bar() = {foo.bar}()
+    still awful, but...
+    (method calls are the special thing so it would be nice if they had the special syntax instead, but the whole point is that we want both `foo.bar` and `foo.bar()` to be like in other languages, so really it's everyone else's fault :\)
+  if we remove normal function calls f(a, b) entirely:
+    foo.bar is field access
+    foo.bar() is unary method call, foo.bar(baz) is binary
+    we need to deal with unary calls somehow
+      standalone `foo()` is fine, but `foo.bar()` is still ambiguous :\
+    and generic types look like Int.List() - kinda MLish
+      or String.Map(Of Bool)
+      or Int.Array().Ref()
+      ...but then there's nowhere to put effects: Ref(mut Array(Int)) vs. mut Ref(Array(Int))
+    what about fn types?
+      foo: fn(a: Int, b: String) -> Bool
+      foo: Int.fn(b: String) -> Bool ???
+    doesn't seem like this would work out well enough...
   tuples
   ...: ranges, splices/variadics, iterators?
-    alternative for ranges: `1 to 10`?
+    alternative for ranges: `1 to 10`? or `1.to(10)`
     structurally, ranges are just records... so `1..10` or `1 to 10` is just sugar for `(from 1, to 10)`?
     maybe `...foo` should actually be *the* syntax for "a row"?
-  []: arrays, iterators?
+  []: arrays, iterators, ...?
   if records == modules, do we want two different flavors of record syntax?
 
 everything-is-a-record vs. mutability of individual variables / arguments
   fn foo(mut x: Int) and fn foo(x: mut Ref(Int)) are manifestly distinct
+  how does `let mut foo = 5` translate into a record field?
+  do we even have `let`s? or just `name value`?
+
+everything-is-a-record vs. the stack
+  interesting case: closures
+  here the closure (fn) sees _three_ "records":
+    its arguments, its local variables, and the outer environment
+  how are these combined/coalesced/concatenated/cowhatevered?
+  (also how are they represented? linked list of stack segments / cactus stacks?)
+    that's also nice for:
+      concurrency/parallelism
+      type-based compiler-generated GC tracing (just walk back up the stack)
+      tail calls on JVM/CLR? (but what about FFI?)
+    we can avoid a performance cliff for "vanilla" non-fancy code (that mostly just uses the stack in C-like ways) with:
+      bump-pointer allocation
+      allocating stack frames into a compact region? (so now they're adjacent like in a C stack, only diff is the overhead of a back-pointer per frame)
+
+everything-is-a-record vs. generic types
+  the way we customarily want to write our generics doesn't quite match the record-based logic
+  we'd want to write e.g. `type Maybe(T) = (case yes: T, case no)`, and invoke it as e.g. `Maybe(Int)`
+  but our options are actually
+    `type Maybe(type) = (case yes: $0, case no)`, `Maybe(Int)`
+    or `type Maybe(T: type) = (case yes: T, case no)`, `Maybe(T Int)`
+    (or something)
+  perhaps
+    List(Of Int)
+    fn List(Of) { type (case nil, case cons(head: Of, tail: List(Of)) }
+
+is the kind of functions `(Effect, Type) -> Type` or `(Effect, Row) -> Type`?
+  latter seems more appealing?
+
+delimited continuations ~ yield/run ~ algebraic effects??
+Yield ~ IEnumerator ~ unfoldr?
+
+relationship between first-class unification and logic programming...?
+  invertible functions, lenses/prisms/traversals, coroutines, ...?
+  delimited continuations, yield/run, algebraic effects...?
+  http://journal.stuffwithstuff.com/2015/02/01/what-color-is-your-function/
+    http://journal.stuffwithstuff.com/2015/02/01/what-color-is-your-function/#comment-1830835050
+  http://blog.paralleluniverse.co/2015/08/07/scoped-continuations/
+  "Does it provide channel select? Because that's the hard part. Threadsafe queues are easy, select on them is hard."
+  "Thread memory use is kind of independent of 1:1 vs. M:N, honestly; the thing that can improve scalability is relocatable stacks, which is really not the same thing."
+    stacks are just (a linked list / cactus stack of) records, so...?
+  "any sort of userspace threading won't get you to the performance of, say, nginx, as once you have any sort of stack per "thread" you've already lost."
+  "So since you're talking about scalability into the millions of threads, I think what you actually want is stackless coroutines rather than M:N threading with separate user-level stacks. If you have 1M threads, even one page of stack for each will result in 4G of memory use. That's assuming no fragmentation or delayed reclamation from GC. Stacks, even when relocating, are too heavyweight for that kind of extreme concurrent load. With a stackless coroutine model, it's easier to reason about how much memory you're using per request; with a stack model, it's extremely dynamic, and compilers will readily sacrifice stack space for optimization behind your back (consider e.g. LICM).
+  Stackless coroutines are great--you can get to nginx levels of performance with them--but they aren't M:N threading as seen in Golang. Once you have a stack, as Erlang and Go do, you've already paid a large portion of the cost of 1:1 threading."
+  "Coroutines are preemptible at I/O boundaries or manual synchronization points. Those synchronization points could be inserted by the compiler, but if you do that you're back into goroutine land, which typically isn't better than 1:1. In particular, it seems quite difficult to achieve scalability to millions of threads with "true" preemption, which requires either stacks or aggressive CPS transformation."
+  "Coroutines differ from green threads in that you don't yield to the scheduler, but you explicitly yield to the coroutine that you want to run. In this example, the lexer would explicitly yield a token to the parser, and the parser would explicitly yield to the lexer when it needs a new token. This is fully deterministic at all conceptual levels. You can implement green threads on top of coroutines by writing a yield-to-scheduler function that picks another coroutine from a list of suspended coroutines, and yields to it." --julesjacobs
+  (do FRP Behaviors fit in anywhere?)
+    if FRP.Event = Future, and green threads / coroutines / fibers are preferable to async and Futures...
+    ...where does that leave FRP? can we write Event-based FRP code as imperative code?
+    are green threads / coroutines / fibers just the same thing as the Event monad?
+    what about EventStream and Behavior though? when used in conjunction with Events?
+http://www.paolocapriotti.com/blog/2012/06/04/continuation-based-relative-time-frp/
+
+what should the basic "stream"/"iterator" type be?
+  persistent lazy lists, like Haskell?
+  mutable in-place imperative iterators, like Rust?
+  the Stream stuff behind stream fusion is essentially... (one of these?) a fold? unfold?
+    I think it was an unfold...
+    except specialized to lists-with-filtering, whereas it could be datatype-generic in theory?
+  internal or external iterators or both??
+    first-class continuationy (non-local return) stuff makes internal iterators viable
+    but it can still be nice to pass around Stream(T)/Iterator(T)/List(T) explicitly?
+    what does Haskell do?
+      it has both: internal iteration with fmap/mapM, external with [a] and stream fusion?
+    is there still a place for external iteration in a world with first-class delimited continuation ish things?
+      yeah - you can't do things like InterleavedIterator with internal iterators(?)
+      actually you can... non-local return isn't enough, but fibers are!
 
 What should the runtime representation of effects be?
   Are higher-rank effects something that can or should exist?
   Either effects should be completely erased, or they should be treated "just like types"
     We can't just monomorphize them away, because then effect polymorphism conflicts with separate compilation
   If `const fn()` and non-const `fn()` work differently at runtime, that means they can't be completely erased...?
+
+how to handle the tension between FFI and concurrency?
+  for one thing, stacks
+  and sending closures between processes
+    if it closes over FFI pointers, that won't work
+    but tracking which closures (which existential types) are sendable at the type level is painful at a minimum
+    compromise: allow runtime test for sendability on any type / closure?
+      "worse is better" :/
+    or maybe: `extern fn` as the type of not just foreign functions, but any functions which are, or close over, foreign data?
+      iow, `extern` is an effect in its own right
+      this smells like the right "better is better" approach...
+      ...but it seems like a painfully awkward world-split if everything has to keep type-track of whether it interacts with FFI
+        another thing that would be like this is `trusted fn`
+      (which split however _does_ reflect fundamentals in that you could do things with pure Ducks stuff that you just can't with foreign ones...)
+      how much of the pain would be alleviated by effect polymorphism?
+    also, how would we even express "a non-`extern` thing" (!extern) if effects are also row-based...?
+      you can only express the presence, not the absence, of an effect...?
+
+if rows are first-class and have many "consumers" - struct, enum, fn, Table, ..
+  .. how do type components work?
+  struct(type T, x: T)
+    this is clear enough
+  enum(type T, x: T)
+    this makes no sense _whatsoever_
+    but does that mean we need to forbid it, or merely that it's not useful?
+  Table(type T, x: T)
+    ???
+    this would require equality-testing on types...? (to be a relation, rather than a multiset-thing)
+  maybe there's a difference between "lowercase rows" and "uppercase rows" - only the latter can have type components?
+    or rather, only uppercase rows can contain uppercase things
+  is there anything besides structs and fns that _can_ handle uppercase rows?
+    (various functor-combinators derived from them, like EitherF/BothF/ComposeF?)
+    any other _primitives_?
+    the map-over-rows stuff for first-class pattern matching thingie also doesn't make sense over types...
+
+what's the deal with generalizing booleany stuff to patterny stuff?
+  an irrefutable pattern match essentially returns a record of bindings
+    what is its type?
+    (refutable just means "on a record, rather than enumeration type")
+  a refutable match returns either a record of bindings or an enumeration of the remaining variants
+    (or rather, the "record" of bindings is only if it's an irrefutable match inside a refutable one)
+    what is its type?
+    how can it avoid an infinite regress (having to refutably match again on the result)? CPS HOF?
+  what about: conjunctive patterns (@/as), disjunctive patterns, horizontal patterns (just records?), nested patterns, guards...
+     what about `let P(x) = foo() else bar() else baz() else return();`, `let P(x) = f() else let Q(x) = g();`?
+     what primitives can we express these with? can they be made ergonomic to use _directly_?
+  what about !, &&, ||, ...?
+    what do they apply to - enumerations, patterns, pattern matches...?
+  if->if let, while->while let, unless let, until let, vs. loop-break ...
+    while foo { stuff } -> loop { if !foo { break } stuff }
+    while let foo { stuff } -> loop { if !let foo { break }; stuff }
+      what's that !let there??
+      probably something about the pattern match having two continuations - success and failure - and they get flipped...
+
+"A functor is applicative if and only if its body is a provably pure module expression, otherwise it is generative. Likewise, sealing is weak (in the parlance of Dreyer et al. [1]) if and only if it seals a pure module, and strong otherwise. Moreover, there is a natural subtyping relation between pure and impure functor signatures." -- F-ing applicative functors
+TODO look into the second two things!!

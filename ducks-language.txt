@@ -28,6 +28,7 @@ favor expressiveness and simplicity over incremental performance diffs... but st
   performance is frequently sacrificed, but it is sacrificed *consciously*
 minimize bureaucracy and ceremony (coordination costs)
 minimize language-imposed rigid structures
+  "malleable"
 minimize duplication within the language (term level vs. type level vs. module level vs. ...)
 implementation: should be simple enough to re-implement several different ways / in several different languages?
   like how there are many C compilers and people occasionally write one as a hobby
@@ -256,6 +257,7 @@ equirecursive types
   with values of coinductive types, we must be careful that consumers are productive
   do equirecursives types (types of coinductive kinds) have consumers??
   what was the soundness bug GHC had w.r.t. non-converging type instance something or other...?
+    https://ghc.haskell.org/trac/ghc/ticket/8162
 primitive types
  * Integer ("Int"?)
  * Natural ("Nat"? "UInt"?)
@@ -874,6 +876,7 @@ syntax
   user-defined operators?
   1-based indexing?
     would go nicely with inclusive ranges...?
+    https://blog.nelhage.com/2015/08/indices-point-between-elements/
   `panic!`? `despair!`? `alas!`?
   uninhabited type is `!`, `Never`, other...?
     or it could be `()` the empty *sum* type, and the empty product type could be `void`...? (just to confuse everyone)
@@ -1607,6 +1610,12 @@ effect-typed data for mutability polymorphism
         that's if we (perhaps intentionally) don't specialize the representation of `const Ref(T)` to just be `T`
         and anything else that's also word-sized, but how does that work? esp without typeclasses?
     what about `atomic Array(T)`?
+      also, what about `atomic Table`?
+      if we want normal RDBMS like stuff with transactions just being STM transactions, we want either `atomic Table` or `AtomicTable` (a.k.a. `Table`, but it's always atomic)
+        the question is whether we also want `const Table`, `mut Table`, and so on, and whether that makes sense / works out (see above)
+      how does this work together with `mmap` for on-disk databases?
+        for remote dbs, send over a closure instead?
+        cf. Unison's ideas...
     can we conceivably have a `Mutex(T)` type like in Rust in `io` with local `mut` borrowing?
       would this make sense?
         io fn withLock(type T, type Result, mutex: Mutex(T), op: fn(contents: mut Ref(T)) -> Result) -> Result
@@ -1666,6 +1675,9 @@ w.r.t. scoped mutation, the usual way (e.g. ST monad) is that it (a function, ex
 "Most programming languages start out aiming to be simple, but end up just settling for being powerful."
 http://dave.cheney.net/2015/03/08/simplicity-and-collaboration
 
+"Design patterns is always sign of weakness in language. examples is monad, zipper, lens and persistent data structure"
+https://twitter.com/plt_borat/status/228119470621732864
+
 "I’m told one of the very big reasons Lua is amenable to embedding is that it’s trivial to disallow IO: you just don’t have the io module."
 
 People will be coming from:
@@ -1687,15 +1699,18 @@ cultural syntactic choices:
       on the other hand, declaration syntax should mirror use syntax
     does this break our arguments-not-ordered stuff?
       what about calling a function with pre-constructed record?
-    also require parentheses around any not-completely-obvious operators? (i.e. other than basic arithmetic)
-    and require spaces around infix operators
-    and no glob imports? (if it's good enough for Go...)
-    likewise no while, just loop (what about for?)
+    sadly this doesn't really work unless we also want to write `Int.Array()` :\
+  also require parentheses around any not-completely-obvious operators? (i.e. other than basic arithmetic)
+  and require spaces around infix operators
+  and no glob imports? (if it's good enough for Go...)
+  likewise no while, just loop (what about for?)
   having multiple equivalent ways to write the same thing is something to _avoid_?
+    like Python one clear way to do it
   syntactic inspiration: JavaScript, Markdown, C, DOS/Unix
   numeric literal suffixes: 1i Int, 2u UInt, 3f Float (double)
+  string interpolation?
 
-informal language
+informal language & naming
   "avoid jargon (terms of art?) whenever possible"
   identifier/symbol/label -> name
   mutate    -> modify? destructive update? change?
@@ -1710,6 +1725,17 @@ informal language
   mod(ulus) -> rem(ainder)?
   overload  -> ??
   nontermination -> divergence?
+  string    -> text?
+  iterators: more() -> yes/no?
+    represent regexps' ?, *, and + in types, as uniformly/compatibly as possible?
+  mutable/immutable -> read-only/read-write? (mut -> rw? const -> ro? eh :\)
+  row -> ? ("args"? "types"? "glob"? "pack"? what else do languages call these...?)
+  getter-setterish pairs:
+    get     + set   -> single-valued cell  : IORef
+    read    + write -> synchronous stream  : File
+    take    + put   -> nullable cell?      : Ref(Maybe), MVar
+    receive + send  -> asynchronous stream : Socket, Channel...
+
 
 misc syntax
   what about a postfix % operator which is equivalent to (/ 100)?
@@ -1722,8 +1748,13 @@ misc syntax
   we should have some kind of HOF sugar... perhaps a fn argument with a particular name can be provided as a trailing block?
     what if it has arguments?
     though we /know/ what its name will be... would it be evil to just bring it into scope? (yeah, maybe)
+      perhaps allow it implicitly if it has a standard name - break/continue/return/goto/yield/throw/... - and isn't shadowed, otherwise require it to be explicit?
+        would it be conceivably possible to pre-declare these as global fns which can only be called inside the appropriate HOF...?
+          seems weird, at least, and doesn't deal with nesting/shadowing
+          maybe some fancy effect-typing/handling thing
+    (what's the name? `body`? `block`? `do`?)
   perhaps we want sugar for `let x = foo.x, y = foo.y, ...`
-    `let (x, y) = foo` a la Rust?
+    `let (x, y) = foo` a la Rust?f
     `import x, y from foo`?
       `import foo.(x, y)`?
     what about construction vs. matching duality (incl. fn named args) and renaming?
@@ -1761,8 +1792,10 @@ misc syntax
     can we have SIMD-sized records automatically be represented as SIMD?
     if the only restriction is no interior references... (also alignment?)
   what should the entry point be? just have `main()`?
+    a global `io { }` block?
   we could use `where` for both refinement types and comprehensions
   uninhabited type is what - `!`? `never`? `Never`?
+    `fn(type T) -> T` is `forall a. a`, question here is `enum Never { }`
   what do disjunctive patterns look like? (case yes, case no as yes)???
   should we use [Int] and [1, 2, 3] for arrays, iterators, or both?
     both arrays and ranges naturally translate to iterators
@@ -1773,6 +1806,25 @@ misc syntax
     why: intuition that "something is happening here" (function call <-> effects)
     they do actually "return a value" (`!`)
     they might be _actual_ function calls in the future? (delimited continuations or whatever...)
+    but perhaps it makes sense to visually distinguish "function calls" which transfer control flow vs. ones which don't?
+      `return 10`, `return!(10)`, `return! 10` ...
+  map() -> foreach()? (what about fold?)
+  syntax for functional record update (of existing field, vs adding new one)?
+    what about field renaming? `foo with (x as yes, y as no)` or something...
+  this/that special identifiers?
+    relationship to $0/$1/etc?
+  allow `enum(ROW)` and `struct(ROW)` instead of or in addition to `(ROW)` and `(case ROW...)`?
+  names of methods for SQL-y stuff (relations) should follow LINQ?
+    which of course itself follows SQL
+    map()    -> select()
+    filter() -> where()
+  passive voice for non-destructive/non-effectful, active voice for destructive/effectful functions
+    e.g. `let list = list.sorted()`; `list.sort()`
+  syntax for holes: `TODO`? :) (should they have names though?)
+  if semicolons are optional, how do we explicitly ignore a return value? .ignore()? .discard()? .unused()? anything shorter? .whatever()? :)
+  "functional update syntax" for dicts and arrays analogously to records?
+  instead of numeric literal suffixes: a . indicates Float, presence of +/- means Int, otherwise UInt?
+  #cfg -> #if?
 
 keywords:
   decls:   let, fn, extern, type, case
@@ -1813,6 +1865,7 @@ an "effect" is basically anything where, given a HOF g(f) with parameter f, then
       or maybe we actually want record fields to have effect types, so we get something like the proposed `unsafe` struct fields for Rust...???
     invariant violations, a.k.a. abstraction violations
       the language / type system _itself_ is an abstraction (violated by `unsafe`/`dangerous`)
+http://lambda-the-ultimate.org/node/4786#comment-76148 dmbarbour on effect systems
 
 it's annoying that we want `:` to be "the" type ascription operator, but then record types `(a: Foo, b: Bar)` and values `(a foo(), b bar())` aren't symmetric
 can we actually overload `:` to mean _both_ type ascription and value binding, based on whether the RHS is a type or a value (uppercase or lowercase)?
@@ -1868,6 +1921,8 @@ memory management
     how does it relate to "unified theory of garbage collection", w.r.t. determining reference counts and such?
       region-based == reference-counting for entire regions at once, statically inferred when it goes to 0?
       or... "region inference is compile-time tracing"?
+      both reference counted single objects and tracing garbage collected whole heaps are instances of degenerate regions...? (at opposite extremes)
+      also "rootedness" reference counts in e.g. rust-gc...
     (how (well)) can region-based memory management be hybridized with GC and/or RC?
 is there anything that scales smoothly from latency-priority to throughput-priority, like how intensional type analysis scales from whole program to separate compilation?
 can we solve the problem where the GC holds on to a big array because of a reference to a small slice (or element) of it?
@@ -1896,6 +1951,10 @@ Owen Shepherd ‏@oshepherd 16h16 hours ago @eevee     That requirement pretty m
           (what do function calls look like in this case...? given we'd want to avoid the native stack entirely(?))
         #2: mark required TCE sites with `#tail`, inline/specialize everything until these can be statically dispatched and TCEd? _can_ this work?
 as the mutator traverses and accesses data on the heap, it is in effect proving that it to be reachable. can we take advantage of this so that the GC has less work to do and doesn't have to re-trace it all over again?
+  "Reference counting is a widely employed memory management technique, in which garbage collection operations are interleaved with computation." :-)
+  iow the mark phase of a mark/sweep could be interleaved into the mutator (but instead of rc, just set marked bits)? or copying phase of Cheney?
+    when does this marking _stop_ being valid? when does it _start_ to make sense?
+    (by definition, everything left over after the previous sweep was live at that point...)
 "completely abstract" values do not need to be retained: in `(type T, foo: T)`, there is no way to actually do anything with a `T`, and `foo` can be reclaimed
   see also: closures / dangling pointers (of "type-preserving garbage collection", MLKit), scoped mutation (just allocate on a stack and deallocate unconditionally?)
   (can this basic idea be generalized / taken further for other things?)
@@ -1911,6 +1970,14 @@ thunks (`fn() -> T`) should always allocate the `T` directly into the old genera
     if it is true, can we statically tell which is which???
   what if garbage collection happens while running the thunk?
     in this case no writeback / no mutation has taken place yet, so it isn't relevant(?)
+http://factor-language.blogspot.hu/2009/11/mark-compact-garbage-collection-for.html
+https://github.com/golang/proposal/blob/master/design/12800-sweep-free-alloc.md
+  this could enable small-slice-of-big-array-doesn't-keep-around-whole-array:
+    arrays are allocated not as large objects but in spans whose object size matches their element type?
+    the GC routine for Array(T) sets (only) those bits in the mark bitmap which actually correspond to the slice
+    (where else was this kind of thing an issue?)
+  how do dense mark bitmaps square with compact regions?
+first-pass memory management: just copy/port/transliterate Go's GC?
 
 data representation
   boxing
@@ -2013,6 +2080,8 @@ Intensional type analysis
     and then we perhaps also want to "always" specialize by certain higher-order dictionary arguments they get passed to match e.g. Rust traits
     iow, goal-based optimization? instead of numeric heuristics for when to inline/whatever, specific goals: try to eliminate as many as possible runtime size/alignment calculations, indirect calls, ...
       (so essentially, operations known to be expensive)
+      -> predictable cost model?
+      know which things are expected to be cheap -> make sure they are cheap
     but then can/do we want to generalize this?
       types we can specialize by (which can vary): sum types, function types, ...?
     like would it be remotely practical to try to do some form of supercompilation instead of more special-cased optimizations?
@@ -2215,6 +2284,8 @@ Relative pointers, SHM, and so on
     You can move a relatively-addressed object anywhere and it stays valid - provided all the relative pointers move with it
       Can never move the relative pointers themselves - only if you apply a fixup
     Seems like there should be a cleaner / clearer formulation...
+  How do relative pointers interact with copying (moving) garbage collection?
+    Do they let us do fewer pointer fixups??
 
 the type system is just a layer over an untyped substrate?
   improves flexibility/expressiveness, integration with other untyped langs
@@ -2324,6 +2395,24 @@ What should our default non-integer type be??
       could also have Real in addition, dividing line should either be irrational numbers or decidability
       annoying thing vs. the integers is that we can't even really re-use the built-in hardware for floats (right?)
         can we use simd integer stuff maybe?
+        actually we could - test for FE_INEXACT?
+        http://linux.die.net/man/3/feenableexcept
+        http://www.cplusplus.com/reference/cfenv/fetestexcept/
+        http://www-personal.umich.edu/~williams/archive/computation/fe-handling-example.c
+        wonder what performance is like...
+          fetestexcept seems to add 40x overhead :\
+        representation:
+          can we encode a pointer to a rational in a NaN?
+          can we get extra-tricky and have _either_ an f64 _or_ an unboxed rational (or cf) _or_ a pointer?
+            can a rational or a continued fraction store substantially more precision in 64 bits than floating-point, though?
+            seems doubtful
+          "The first bit is the sign bit, and the next eleven are all exponent bits. If all of the exponent bits are 1s, then the number is a NaN, unless all of the remaining bits are 0s."
+          So we have ~53 bits to work with... AMD64 pointers have 48 significant bits so this is more than enough!
+          "He is restricting the non-doubles to be *signaling* NaNs, thus avoiding the unsafe assumption that only one particular (quiet) NaN is *the* representation of NaN."
+        FE_INEXACT is good for going from f64 to full precision, but what about backwards?
+        i.e. when a computation on rationals or cfractions could be represented as f64?
+        is there an easy/fast way to test?
+        could actually prototype this in Rust...
     to be usable as a `Real` type we would need:
       most or all algebraic numbers (roots, exponents, logarithms), e
       most or all trigonometry, sin, cos, tan, pi
@@ -2336,12 +2425,16 @@ What should our default non-integer type be??
         https://en.wikipedia.org/wiki/Transcendental_number#Numbers_proven_to_be_transcendental
           here it says that sin, cos, etc _are_ transcendental??
           perhaps the diff is in whether the arg is rational or not?
-          oh, it's only algebraic if the arg is a rational multiplied _by pi_
+          oh, it's only algebraic if the arg is a rational _multiplied by pi_
       the ability to compare() two Reals and always get the correct result without diverging
         bisimulation or something??
       iow closed under arithmetic, roots, powers, logarithms, and trigonometry, and in/equality always decidable
         ...except it can't be closed under roots because then it's complex
-        so we want... the same thing, minus the complex numbers? :\
+        so we want... the same thing, minus the imaginary parts? :\
+  What about for complex numbers?
+    perhaps the default should be `Complex` which is a pair of rationals (or reals??)
+    really wanting to avoid `Complex(T)` but probably not going to make it...
+    only mathematically correct is `Complex(Real)`, but even our main type is "just" a rational, and then there's hardware floats...
 
 Interesting number types
   Natural numbers
@@ -2353,6 +2446,7 @@ Interesting number types
   Complex computable numbers
   Hyperreal numbers?
   (Are automatically differentiated numbers a "type of numbers"?)
+  Do complex numbers with non-real "components" make any sense??
 
 The status of Int
   We want to be able to pattern match on it
@@ -2439,9 +2533,6 @@ the function-that-starts-up-the-runtime-and-calls-main gets passed
   how to handle/print debug()
   how to allocate?
 
-other devel ergonomics stuff
-  `debug(foo)` prints something like file:function:line:column:debug(foo = actual value)
-
 is a thunking pattern match (`let foo() = a + b`, or `let foo! = a + b` in Frank) kind-of the same thing as irrefutable patterns `~foo` in Haskell?
 
 "Then, as in any dual construction, the introduction form of the primal corresponds to the elimination form of the dual. Thus, elimination forms of sums (e.g., match) correspond to introduction forms of records. In particular, record extension (an introduction form) corresponds to the extension of cases (an elimination form). This duality motivates making cases first-class values as opposed to a mere syntactic form."
@@ -2450,8 +2541,14 @@ Duplicate effects in effect rows
   According to Koka this makes some things easily typeable like an expression catcher where the handler itself may throw another exception
   Does it have any bearing on nested atomic transactions?
 
-allow splicing one record into another as long as at most (or exactly?) one of them has a row variable?
-  a la effect rows in Frank
+First-class record/variant/label stuff
+  parameterized over rows: records, enumerations, relations... other? SoA/AoS?
+  map() on rows?
+    like `instance Functor (Map k)`: only acts on types, leaves names/labels alone
+    e.g. To(R: Row, Z: Type) = R.Foreach(fn(T) { type fn(T) -> Z })
+    given an enumeration (A...), Record(To(A...)) is the type of records-of-functions to pattern match on the enumeration
+  allow splicing one record into another as long as at most (or exactly?) one of them has a row variable?
+    a la effect rows in Frank
 
 meaning of `const fn`
   constant over the lifetime of the program, probably?
@@ -2505,6 +2602,10 @@ threading model, concurrency & parallelism
       (and then we can also allow writing into `Ref`/`Array`s with this effect along with `mut`?)
       (in effect it would _actually_ correspond to `static mut`, instead of "`static mut` plus threading"?)
       (does this even make sense considering our priors??)
+      right -- this is essentially the same thing as `ST RealWorld` in Haskell, or `'static mut` in Rust
+      so it's logical, and we presumably want it (maybe `global mut` or `mut(global)` or something, if we need syntax)
+      question is whether _all other_ IO should also go here, or just globally scoped ST stuff
+      (and whether there's any kind of meaningful distinction between "concurrent" IO/mutation and non...)
     if we have memory isolation we'd maybe also like failure isolation a la Erlang?
       how do non-memory resources figure into this?
       "Here's the real-world facts that need to be dealt with:
@@ -2578,6 +2679,7 @@ Important platforms
   JavaScript
   JVM
   .NET
+https://glyph.twistedmatrix.com/2015/09/software-you-can-use.html
 
 Blind spots
   Subtyping
@@ -2713,9 +2815,12 @@ what about the opposite - worst (non-turing-tarpit) language conceivable
   "object-oriented" - but top type is void*?
     values are essentially (pointers to) a struct where the first field is a type-tag and the rest is the contents?
     or rather, type-tag -> pointer to metatype
+    or to anything else
   provide convenient implicit behavior iff it is likely to be confusing and error-prone :)
   lazy! but impure!
   allow redefining numbers (or literals in general), e.g. 5 = 3, now 5 + 5 == 6 :)
+  foo, bar, baz, quux keywords? (h/t Gankro)
+  "Cat Mario, the programming language"
 
 Type: Kind
 Type = (sizeof: UInt, alignof: UInt, traverse: extern fn(...))
@@ -2737,8 +2842,46 @@ fn fn (Eff: Effects, In: Type, Out: Type) -> Type {
 }
 
 files:
-  ducks-semantics.txt (or ducks-language.txt?)
-  ducks-syntax.txt
-  ducks-impl.txt (or ducks-repr.txt?)
-  ducks-ux.txt
-  ducks-vertical.txt
+  ducks/
+    notes/
+      ideals.txt
+      language-semantics.txt
+      language-syntax.txt
+      impl-repr.txt
+      impl-memory.txt
+      ux.txt
+      vertical.txt
+      libs.txt
+      misc.txt?
+      historical-obsolete.txt
+    papers/?
+      db abstraction manifesto
+      dleijen duplicate labels
+      1ML
+      tar pit
+
+A scalable language:
+  from novices to experts
+  from small teams to large
+  from small, quick-and-dirty programs to big, important, long-lived code bases
+  from whole-program to separate compilation
+  from one processor to many
+  from one machine to many(?)
+  from small heaps to large
+  from one platform to many
+
+two areas of focus:
+  bashing "plain old data" around (as easy, flexible, enjoyable, powerful, etc. as possible)
+  abstraction (powerful, granular(?), airtight)
+  maybe a third: control flow? (w/ continuationy stuff)
+  -
+  data + control + abstraction
+  (AbCD :\)
+
+Things to avoid
+  duplication
+  dependent types
+  subtyping
+  macros
+  data races
+  rabbit holes
