@@ -1978,6 +1978,7 @@ https://github.com/golang/proposal/blob/master/design/12800-sweep-free-alloc.md
     (where else was this kind of thing an issue?)
   how do dense mark bitmaps square with compact regions?
 first-pass memory management: just copy/port/transliterate Go's GC?
+https://twitter.com/thezerobit/status/656613597393481728 "Erlang: each lightweight thread has its own garbage heap, msgs copied betwixt threads, refcounted shared large object heap"
 
 data representation
   boxing

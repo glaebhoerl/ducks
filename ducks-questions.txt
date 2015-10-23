@@ -5,6 +5,7 @@ TOREAD:
   LMS?
   Prolog, Datalog? (Curry?)
   Shen? "The way Shen's pattern-matching, functions, reader macros, Prolog, type system and compiler-compiler all work together is a thing of beauty."
+  http://mythryl.org/
 
 UPPER VS. LOWERCASE, MODULES, ...
   --
@@ -74,6 +75,9 @@ UPPER VS. LOWERCASE, MODULES, ...
   Impredicativity + case-analysis (non-parametricity) is bad
     We don't want typecase anyways, but what about for other uppercase things?
     Can you compile-time branch on `B: Bool`?
+  In "ML Modules and Haskell Type Classes: A Constructive Comparison", associated types in `impl`s can be either `type` or `abstype`
+    what does that correspond to in Ducks?
+    what does "type abstraction in Haskell is performed inside instance (and not class) declarations" mean?
 
 TYPE INFERENCE
   the classic MLF example `choose id`
@@ -102,6 +106,14 @@ AD-HOC POLYMORPHISM, OVERLOADING
   one potentially key difference vs. MTC/MI is that we have Monoid(Int), not Monoid where T=Int
   "T type class is an addictive, unprincipled, global, piecewise-defined, implicitly-applied partial function from types to a record." - right
     can we maybe use type-level structural variants for this actually somehow...?
+  Dreyer, Why Applicative Functors Matter:
+    > Treat projection from a functor as a composition of projection and the functor: F.l := (.l) o F
+    > “MkSet.insert” = λ(X : ORD). MkSet(X).insert
+    > “MkSet.t” = λ(X : ORD). MkSet(X).t
+    > For MkSet.t, argument cannot be inferred
+    > Projection and application of a functor commute: F(M).l = F.l(M)
+    But of course: this is just like `for<T> { ... }`, a.k.a. an item in a polymorphic module ~ a polymorphic item
+  http://www.haskellforall.com/2015/10/explicit-is-better-than-implicit.html
 
 DATA-GENERIC STUFF
   what's our answer to `deriving`?
@@ -218,6 +230,8 @@ what should the basic "stream"/"iterator" type be?
       yeah - you can't do things like InterleavedIterator with internal iterators(?)
       actually you can... non-local return isn't enough, but fibers are!
 
+"Sure there is: nonlocal control flow is any control flow that is initiated outside of the current function, and thus, at best, requires global analysis to reason about. At worst, when combined with indirect calls, it is impossible to reason about in all cases." -- whitequark
+
 What should the runtime representation of effects be?
   Are higher-rank effects something that can or should exist?
   Either effects should be completely erased, or they should be treated "just like types"
@@ -276,6 +290,14 @@ what's the deal with generalizing booleany stuff to patterny stuff?
     while let foo { stuff } -> loop { if !let foo { break }; stuff }
       what's that !let there??
       probably something about the pattern match having two continuations - success and failure - and they get flipped...
+  `case foo VAL` is dual to `VAL.foo`
+    prefix injection vs. postfix projection
+    what about the other half - record construction vs. pattern matching?
+    there's also "with .foo = 5" and "set .foo = 5" -- record extension/update (builder pattern)
+      what are dual to these?
+
 
 "A functor is applicative if and only if its body is a provably pure module expression, otherwise it is generative. Likewise, sealing is weak (in the parlance of Dreyer et al. [1]) if and only if it seals a pure module, and strong otherwise. Moreover, there is a natural subtyping relation between pure and impure functor signatures." -- F-ing applicative functors
 TODO look into the second two things!!
+
+rewrite rules -> equality saturation? https://www.reddit.com/r/haskell/comments/2g6wsx/haskell_for_all_morte_an_intermediate_language/ckgevdt
