@@ -1729,7 +1729,7 @@ informal language & naming
   iterators: more() -> yes/no?
     represent regexps' ?, *, and + in types, as uniformly/compatibly as possible?
   mutable/immutable -> read-only/read-write? (mut -> rw? const -> ro? eh :\)
-  row -> ? ("args"? "types"? "glob"? "pack"? what else do languages call these...?)
+  row -> ? ("args"? "types"? "glob"? "pack"? what else do languages call these...? environment?)
   getter-setterish pairs:
     get     + set   -> single-valued cell  : IORef
     read    + write -> synchronous stream  : File
@@ -2034,6 +2034,11 @@ Intensional type analysis
         can this actually be efficient? would the combinatorial explosion not swamp any gains?
           i.e. is it actually cheaper to dispatch based on the offsets than to just fetch the data using them?
           though the specialized versions could of course themselves be inlined into the general one, and further optimized
+        what's the runtime representation of a row?
+          http://lambda-the-ultimate.org/node/3711#comment-52972
+          but that's not enough if struct elements are in non-lexical order (alphabetical, padding-optimized, w/e), and also of non-uniform size
+          maybe the runtime evidence for a row variable would actually be a function mapping labels to offsets in a record extended with that row...?
+          or some kind of pointer to a table?
       row-polymorphism substitutes for subtyping here, but what about _returning_ records, sum types, etc.?
       if we do specialized representations like bit-packing bools then these would probably have to be something like _functions_? (lenses?)
       there's a big difference between every type having a different representation that's unboxed, and the representation _depending on the containing type_
@@ -2051,6 +2056,8 @@ Intensional type analysis
     (for recursive structures? precisely when?)
       recursives types vs. recursive data vs. recursive functions
       if we think in terms of fixpoint operators a recursive-occurrence is also an abstract type
+        if we actually write it as `fn List(Of) { type (case end, case cons: (head Of, tail List(Of))) }`, likewise!
+      do recursive types correspond to type-level recursive functions, type-level recursive data... or both?
     if we have more freedom to choose object reprs/sizes, does that also give us more freedom in terms of memory management schemes?
       e.g. if we not every integer but only larger (define larger) structures need reference counts, does RC become more practical?
     compare/contrast with DSTs in Rust...
@@ -2726,6 +2733,8 @@ POTENTIALLY BLOCKING QUESTIONS
           runtime_impure(T) != runtime_impure(T)
           Compiletime_pure(T) == Compiletime_pure(T)
           Does Compiletime_impure even make sense??
+          how do we know whether one `T` == the other `T`??? especially if it's, like, a function...
+            blahrg equality/extensionality :-(
       if we have a pure lowercase function returning a type, the typechecker can always know that the output type will be the same, given the same input type
         so we know that f(T) = f(T)
         given `let U = f(T)`, do we also know `u = f(T)`? I mean, of course we *should*... (why does it feel weird?)
@@ -2846,20 +2855,21 @@ files:
   ducks/
     notes/
       ideals.txt
-      language-semantics.txt
-      language-syntax.txt
-      impl-repr.txt
-      impl-memory.txt
+      summary.txt
+      semantics.txt
+      syntax.txt
       ux.txt
+      repr.txt
+      gc.txt
       vertical.txt
-      libs.txt
-      misc.txt?
-      historical-obsolete.txt
+      libs.txt? misc.txt?
+      historical/...?
     papers/?
-      db abstraction manifesto
-      dleijen duplicate labels
       1ML
+      dleijen duplicate labels
+      db abstraction manifesto
       tar pit
+      "System Fω with Equirecursive Types for Datatype-generic Programming"?
 
 A scalable language:
   from novices to experts

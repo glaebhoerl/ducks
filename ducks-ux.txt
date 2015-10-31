@@ -67,3 +67,5 @@ IDE could have 3 modes:
   textual   editing (like existing IDEs)
   syntactic editing (like Lamdu)
   semantic  editing (like Unison)
+
+doc generation https://internals.rust-lang.org/t/rustdoc-restructuredtext-vs-markdown/356/64

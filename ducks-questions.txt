@@ -1,3 +1,9 @@
+BLOCKERS
+  1. Uppercase vs. lowercase [Look at 1ML again, at least!]
+  2. Delimited continuations vs. effects vs. etc [FALLBACK: leave them out at first]
+  3. Type inference [FALLBACK: bidirectional?]
+  4. Ad-hoc polymorphism [FALLBACK: leave it out at first]
+
 TOREAD:
   1ML
   MLF, BiDi
@@ -7,7 +13,13 @@ TOREAD:
   Shen? "The way Shen's pattern-matching, functions, reader macros, Prolog, type system and compiler-compiler all work together is a thing of beauty."
   http://mythryl.org/
 
+Implement an existing language first to get experience?
+  STLC, System F, System Fomega...
+  Haskell 98, Standard ML, 1ML?
+  Is there anything in between the two in complexity?
+
 UPPER VS. LOWERCASE, MODULES, ...
+  What property are we trying to uphold and why????
   --
   foo: (type T, ...)
   let X = foo.T; // can you do this?
@@ -78,6 +90,42 @@ UPPER VS. LOWERCASE, MODULES, ...
   In "ML Modules and Haskell Type Classes: A Constructive Comparison", associated types in `impl`s can be either `type` or `abstype`
     what does that correspond to in Ducks?
     what does "type abstraction in Haskell is performed inside instance (and not class) declarations" mean?
+  Possibilities:
+    * Lowercase stuff is out of scope for uppercase stuff
+    * Only uppercase stuff may appear to the right of `:`
+    * Uppercase stuff is "transparent to the typechecker" or "compile-time constant"
+    * Uppercase stuff is parametric
+  Boundary conditions: compositionality and modularity!
+  A fundamental issue is that (as currently formulated) function return types do _not_ have capitalization
+    So we _can't_ say "uppercase outputs may only depend on uppercase inputs", because we don't know when the output is uppercase!
+    (And we can't infer it from use sites without destroying modularity)
+    What can we do:
+      * `Type` is inherently uppercase and other types aren't (what about functions and records, and generic return types??)
+      * We add a way to signify the capitalization, and/or functions may only return records (which then have upper- and lowercase components)
+      * The capitalization of the return type is signified by the capitalization of the _function_
+          but what about lambdas?
+          is this logically consistent with the universal meaning of uppercase, as applied to the function itself as a value??
+            "runtime function which is known at compile-time" (`const FOO: fn()`) vs. "compile-time function" (`const fn FOO()`)
+            are these different things??? how is this different for functions than like, Ints?
+            (the value of an Int is a number... the value of a function is its body, isn't it? what does it mean to know a function at compile time but not its body??)
+      * We figure out a way to make it not matter, and impose restrictions directly+only on uppercase arguments (values) and/or functions
+  Taking the last one: what if we take "uppercase values must be handled parametrically" as the starting point?
+    What _concrete_ restrictions does that imply?
+      `fn(T: Type, x: T, y: T) -> T` is isomorphic to `Bool`
+      so... can we not apply it??
+    What further restrictions are necessary to achieve our aims?
+    if `fn(A: Foo, a: Foo) -> Foo` can return either one, that definitely destroys any notion of "uppercase variables can't be instantiated by lowercase stuff"
+      can anything still be saved? what do we want to save?
+  "opaque" vs. "transparent"
+  for meaning of uppercase things, are we conflating big/small (universes) with transparent/opaque?
+  "normal value level things" are always "opaque" -> intuition that lowercase should be opaque, uppercase transparent?
+    fn f(X) --> `X` should be opaque to `f`
+    fn F(X) --> `X` should be transparent to `F`
+    ?
+    but what does transparency even imply in this context?
+  opacity vs. transparency only matters at the type level, because it determines whether or not we can infer two types to be the same...
+  there's no static checking of this sort for the value level, naturally
+  and maybe reflecting values to the type level is OK as long as it's opaque?
 
 TYPE INFERENCE
   the classic MLF example `choose id`
@@ -96,7 +144,8 @@ TYPE INFERENCE
       fn(B: ??? fn(T: Type) -> fn(T) -> T) -> fn(B) -> B
       B is a supertype of ...
       we need a function that can either instantiate the `T`, or leave it unchanged
-  higher-order (pattern) unification?
+  "higher-order (pattern) unification"?
+  "Partial polymorphic type inference and higher-order unification"?
   "unification-based type inference does not have a direction and this places severe constraints on how your lang can look like"
   "for example, if your + operator casts operands to widest type of both, it will inevitably require annotations"
   "every time you introduce an implicit cast you prevent inference from flowing in either direction across the cast" -- whitequark
@@ -137,6 +186,7 @@ SYNTAX
       foo->bar() = {foo.bar}()
     still awful, but...
     (method calls are the special thing so it would be nice if they had the special syntax instead, but the whole point is that we want both `foo.bar` and `foo.bar()` to be like in other languages, so really it's everyone else's fault :\)
+    problem: not what we want for modules! `Map.insert()` should be `{Map.insert}()`, not `insert(Map)`!
   if we remove normal function calls f(a, b) entirely:
     foo.bar is field access
     foo.bar() is unary method call, foo.bar(baz) is binary
@@ -270,7 +320,12 @@ if rows are first-class and have many "consumers" - struct, enum, fn, Table, ..
   is there anything besides structs and fns that _can_ handle uppercase rows?
     (various functor-combinators derived from them, like EitherF/BothF/ComposeF?)
     any other _primitives_?
+    hashmap implementations of records -- same semantics, just optimized for large records, updates, and sharing?
+      (can we do this phase transition automatically...?)
     the map-over-rows stuff for first-class pattern matching thingie also doesn't make sense over types...
+      but conveniently, type components in enums don't make sense anyway
+      an existential enum is an enum inside a dependent struct!
+      so it seemingly makes sense to restrict map-over-rows to lowercase rows
 
 what's the deal with generalizing booleany stuff to patterny stuff?
   an irrefutable pattern match essentially returns a record of bindings
@@ -295,6 +350,13 @@ what's the deal with generalizing booleany stuff to patterny stuff?
     what about the other half - record construction vs. pattern matching?
     there's also "with .foo = 5" and "set .foo = 5" -- record extension/update (builder pattern)
       what are dual to these?
+    maybe put this in the syntax?
+      `(foo: Int, bar: Bool)` -> `(.foo: Int, .bar: Bool)`
+      `(foo 1, bar true)`     -> `(.foo 1, .bar true)`
+        but we don't want to write it like this for functions :-(
+      `(case foo: Int, case bar: Bool)`
+      `my_rec.foo` -> 1, `case foo 1`
+      what about pattern matching??
 
 
 "A functor is applicative if and only if its body is a provably pure module expression, otherwise it is generative. Likewise, sealing is weak (in the parlance of Dreyer et al. [1]) if and only if it seals a pure module, and strong otherwise. Moreover, there is a natural subtyping relation between pure and impure functor signatures." -- F-ing applicative functors
