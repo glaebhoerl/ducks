@@ -1,0 +1,186 @@
+docs: hyperlinked source
+
+ducks.io/syntax (quick reference)
+ducks.io/loop
+ducks.io/fn (etc)
+
+filesystem hierarchies -> record hierarchies
+
+one of the nice things about dynamic languages relative to static ones is that they give you positive feedback sooner (beyond just not having to wait for a compile)
+even if in both a static and a dynamic lang, you can get to a working program in 30mins, at the 15mins point...
+  dynamic language: my program starts running, does one of the things I want, and then crashes. it almost works!!!
+  static language: the compiler was yelling at me about something, I tried to fix it, and now it's yelling at me about something else. will this ever work or am I just a terrible programmer?
+
+be much more permissive in devel builds
+  type errors are just warnings (-fdefer-type-errors)
+  for errors where the solution is unambiguous (missing `;`, tabs vs spaces, ...?), just carry on as if it were already fixed
+    (or even when it's not completely unambiguous, just very probable?)
+
+be much more of a hardass for release builds
+  -Werror or something similar (but not for upstream deps, ~Rust)
+  optimization can _only_ be enabled for release builds
+
+"That being said my biggest complaint about Swift is that it lacks Python's simple input() and read() commands. (If you haven't use Python before: input() prompts the user for an input and returns a string, and read() will take the contents from a file and return it as a string.) Having access to simple user/file input dramatically expands the set of examples and assignments I can present in the first month of intro."
+-- http://www.aaronblock.com/thoughts/2015/8/21/why-i-want-swift-to-be-your-first-language
+  say(), listen(), and ask() (= say + listen)?
+  (readFile(), writeFile()?)
+
+Important libraries to steal from other languages
+  QuickCheck (smallcheck, ...)
+  criterion
+Maybe
+  diagrams
+  opaleye
+  reflex / frpnow
+
+other devel ergonomics stuff
+  `debug(foo)` prints something like file:function:line:column:debug(foo = actual value)
+
+Elm/Haskell style guide https://gist.github.com/evancz/0a1f3717c92fe71702be
+
+Elm error messages: https://twitter.com/henrik/status/649305250713743360
+Goal: A radically friendly language
+
+equivalent of Haskell "error" / Rust "panic": oops? sorry?
+
+instead of a `ducksc` program, a single `ducks` which unifies compiler/packager/REPL/docs/..., and then `ducks build` or `ducks make` or smth?
+  ducks help
+  `ducks foo` should be the same as `ducks` (opens a prompt), then `foo`
+
+"debugging haskell would be much easier if interpreted haskell had show instances for functions :\" --psygnisfive
+  another candidate for "the universal existential type vtable"?
+  or rather we already had debug_print in there - difference here is we don't just show the environment, but also the function body?
+  maybe this should be accessed through the function pointer in a TNTC kinda way?
+
+"I bet a program that simply overlays a method call with its source & arguments spliced in will vastly improve productivity in any language." --deech
+
+we probably need regexes in some form
+  (should we go all the way and add literals, integrate them into pattern matching, ...?)
+
+IDE could have 3 modes:
+  textual   editing (like existing IDEs)
+  syntactic editing (like Lamdu)
+  semantic  editing (like Unison)
+
+doc generation https://internals.rust-lang.org/t/rustdoc-restructuredtext-vs-markdown/356/64
+
+What should our default non-integer type be??
+  Previously was thinking "just Doubles", but...
+  What about Doubles-without-NaN, where Double-with-NaN is `Double?`?
+    Also what about infinities, pos/neg zero, denormals, rounding modes, ....?
+      at least infinities are clearly ordered...
+    Need to learn about this stuff, or find someone who knows...
+      What does the IEEE specify? What does hardware support? What does Joe Programmer want? What does Jane Physicist want?
+  Or maybe Rationals (GCD)?
+  Or maybe continued fractions?
+    probably this!
+    can we optimize the representation to store small-enough numbers unboxed?
+      (where small-enough means... what? requiring less precision? smaller integer part and fewer consecutive zeros in decimal?)
+    just require conversion to float for trig stuff?
+    name: Fract? Real?
+      just call it Float
+      it's not really _that_ misleading to call it a floating-point value
+      Int, UInt, Float: arbitrary precision
+      Int16, UInt32, Float64: fixed precision
+      could also have Real in addition, dividing line should either be irrational numbers or decidability
+      annoying thing vs. the integers is that we can't even really re-use the built-in hardware for floats (right?)
+        can we use simd integer stuff maybe?
+        actually we could - test for FE_INEXACT?
+        http://linux.die.net/man/3/feenableexcept
+        http://www.cplusplus.com/reference/cfenv/fetestexcept/
+        http://www-personal.umich.edu/~williams/archive/computation/fe-handling-example.c
+        wonder what performance is like...
+          fetestexcept seems to add 40x overhead :\
+        representation:
+          can we encode a pointer to a rational in a NaN?
+          can we get extra-tricky and have _either_ an f64 _or_ an unboxed rational (or cf) _or_ a pointer?
+            can a rational or a continued fraction store substantially more precision in 64 bits than floating-point, though?
+            seems doubtful
+          "The first bit is the sign bit, and the next eleven are all exponent bits. If all of the exponent bits are 1s, then the number is a NaN, unless all of the remaining bits are 0s."
+          So we have ~53 bits to work with... AMD64 pointers have 48 significant bits so this is more than enough!
+          "He is restricting the non-doubles to be *signaling* NaNs, thus avoiding the unsafe assumption that only one particular (quiet) NaN is *the* representation of NaN."
+        FE_INEXACT is good for going from f64 to full precision, but what about backwards?
+        i.e. when a computation on rationals or cfractions could be represented as f64?
+        is there an easy/fast way to test?
+        could actually prototype this in Rust...
+    to be usable as a `Real` type we would need:
+      most or all algebraic numbers (roots, exponents, logarithms), e
+      most or all trigonometry, sin, cos, tan, pi
+        https://en.wikipedia.org/wiki/Trigonometric_number
+        "Any trigonometric number can be expressed in terms of radicals ... Thus every trigonometric number is an algebraic number."
+        so what's actually transcendental?
+          Algebraic^IrrationalAlgebraic is!
+          e, pi
+          any algebraic function of a transcendental number
+        https://en.wikipedia.org/wiki/Transcendental_number#Numbers_proven_to_be_transcendental
+          here it says that sin, cos, etc _are_ transcendental??
+          perhaps the diff is in whether the arg is rational or not?
+          oh, it's only algebraic if the arg is a rational _multiplied by pi_
+      the ability to compare() two Reals and always get the correct result without diverging
+        bisimulation or something??
+      iow closed under arithmetic, roots, powers, logarithms, and trigonometry, and in/equality always decidable
+        ...except it can't be closed under roots because then it's complex
+        so we want... the same thing, minus the imaginary parts? :\
+  What about for complex numbers?
+    perhaps the default should be `Complex` which is a pair of rationals (or reals??)
+    really wanting to avoid `Complex(T)` but probably not going to make it...
+    only mathematically correct is `Complex(Real)`, but even our main type is "just" a rational, and then there's hardware floats...
+
+Interesting number types
+  Natural numbers
+  Integer numbers
+  Rational numbers
+  Real algebraic numbers
+  Real computable numbers
+  Complex algebraic numbers
+  Complex computable numbers
+  Hyperreal numbers?
+  (Are automatically differentiated numbers a "type of numbers"?)
+  Do complex numbers with non-real "components" make any sense??
+
+also: "Unicode is hard. Time is hard. Serialization is hard. Everyone is bad at all of them."
+  what else is everyone bad at? (^ floats)
+  unicode -> just copy Rust?
+
+the function-that-starts-up-the-runtime-and-calls-main gets passed
+  how to handle oops() (devel builds with interactive terminals: open a console??)
+  how to handle/print debug()
+  how to allocate?
+
+Development environment?
+  Text editor?
+  "Intellisense" IDE?
+  Syntactic IDE (Lamdu)?
+  Semantic IDE (Unison)?
+  Spreadsheet-like thing (Chris Granger project, forget name)?
+  "lenslike editing":
+    name (ambiguity) resolution and type inference happens *in the IDE* when inputting code
+    actual source is stored fully typed and resolved
+    much more robust to upstream changes! (c.f. Rust's "minor changes")
+    when *displaying* the source, the same information is /elided/ if it "could've been resolved or inferred"
+    e.g. if the only `foo` on Monday is `Foo::foo`, writing `foo` in the IDE stores `Foo::foo` in the source
+    on Tuesday, there's still only one `foo` (`Foo::foo`), so it displays as `foo`, just as it was written
+    on Wednesday, `Bar::foo` is added; now the original `foo` *displays* as `Foo::foo`, because it is no longer unambiguous
+    likewise the "use internal IDs to identify items, not names, so renames are free and non-breaking" idea
+    taking this even FURTHER:
+      we could also use this to handle deprecation/removal!
+      currently: removal of an item is breaking; deprecation leaves the old item around and adds a new one, so is non-breaking
+      but this could be automatic: the old version is kept around by the infrastructure for as long as the client code is using it
+      but what if the old version refers to other items which have themselves been removed, or changed?
+      then we need to keep around the _transitive closure_ of the old items
+      in other words: persistent updates instead of mutation! garbage collection of no-longer-used old items!
+        (how does it relate to versioning/revisions a la git...?) (git is also persistent-update; but you can also refer to old versions explicitly)
+        how do we know when old/new are "the same"? hash trees as a la git?
+        thorny issue: when are old and new _types_ the same?? (OldFoo vs. NewFoo type errors -> breaking change)
+      "removing an item while other code was still referring to it" is similar to "deallocating (or invalidating) memory while there are still references to it"
+        (could Rust-style ownership instead of GC work here? probably not: would essentially prohibit upstream from ever making breaking changes... ~semver??)
+      could this line of thought also lead to hot-code-updates a la Erlang??
+
+IDE should be as rich and graphical as possible, but should input/output text files, so a text editor can also be used?
+
+"Compilers are things that throw away as much information about your program as possible. They are, by their very nature, actively hostile towards development. It’d be really nice if you didn’t need to actually compile until you were ready to deploy."
+
+"So I guess nothing is going to happen. I wonder how we might design a programming language to manage the impact of library evolution. At the moment, we have no good way to say "I have noticed this change and updated my code, so stop warning me."."
+versioned imports and warnings??
+
+

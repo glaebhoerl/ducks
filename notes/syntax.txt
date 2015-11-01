@@ -1,0 +1,252 @@
+QUESTIONS
+  method calls
+    maybe instead of `foo().bar().baz()`, just `foo() bar() baz()` or `foo()bar()baz()`... but it's weird
+    maybe just
+      foo.bar    = field bar of foo
+      foo.bar()  = bar(foo)
+      foo->bar() = {foo.bar}()
+    still awful, but...
+    (method calls are the special thing so it would be nice if they had the special syntax instead, but the whole point is that we want both `foo.bar` and `foo.bar()` to be like in other languages, so really it's everyone else's fault :\)
+    problem: not what we want for modules! `Map.insert()` should be `{Map.insert}()`, not `insert(Map)`!
+  if we remove normal function calls f(a, b) entirely:
+    foo.bar is field access
+    foo.bar() is unary method call, foo.bar(baz) is binary
+    we need to deal with unary calls somehow
+      standalone `foo()` is fine, but `foo.bar()` is still ambiguous :\
+    and generic types look like Int.List() - kinda MLish
+      or String.Map(Of Bool)
+      or Int.Array().Ref()
+      ...but then there's nowhere to put effects: Ref(mut Array(Int)) vs. mut Ref(Array(Int))
+    what about fn types?
+      foo: fn(a: Int, b: String) -> Bool
+      foo: Int.fn(b: String) -> Bool ???
+    doesn't seem like this would work out well enough...
+  tuples
+  ...: ranges, splices/variadics, iterators?
+    alternative for ranges: `1 to 10`? or `1.to(10)`
+    structurally, ranges are just records... so `1..10` or `1 to 10` is just sugar for `(from 1, to 10)`?
+    maybe `...foo` should actually be *the* syntax for "a row"?
+  []: arrays, iterators, ...?
+  if records == modules, do we want two different flavors of record syntax?
+
+People will be coming from:
+  JavaScript
+  C#/Java/Swift
+  Ruby/Python
+  Scala, F#, Haskell, OCaml, Lisp, ...
+
+cultural syntactic choices:
+  C-style curly braces
+  optional line-end semicolons? (or like Rust?)
+  use `var` instead of `let`?
+  dot: field access, method call, composition, ...?
+  arrow: lambda, composition, ...?
+  foo(x): anonymous fields, punning, ...?
+  radically: _remove_ normal function calls, have _only_ method syntax?
+    means you can simply read code left-to-right, always
+    also means you always need a `this` argument?
+      on the other hand, declaration syntax should mirror use syntax
+    does this break our arguments-not-ordered stuff?
+      what about calling a function with pre-constructed record?
+    sadly this doesn't really work unless we also want to write `Int.Array()` :\
+  also require parentheses around any not-completely-obvious operators? (i.e. other than basic arithmetic)
+  and require spaces around infix operators
+  and no glob imports? (if it's good enough for Go...)
+  likewise no while, just loop (what about for?)
+  having multiple equivalent ways to write the same thing is something to _avoid_?
+    like Python one clear way to do it
+  syntactic inspiration: JavaScript, Markdown, C, DOS/Unix
+  numeric literal suffixes: 1i Int, 2u UInt, 3f Float (double)
+  string interpolation?
+
+informal language & naming
+  "avoid jargon (terms of art?) whenever possible"
+  identifier/symbol/label -> name
+  mutate    -> modify? destructive update? change?
+  variant   -> case
+  sum type  -> enumeration, either, choice, switch, union, variant, disjunction, select, divide, ...?
+  struct    -> record, aggregate, composite, ... group?
+               or maybe just "structure"? it does happen to unify the meanings of "struct" from both ML and C ¯\_(ツ)_/¯
+  field     -> member?
+  pure      -> stateless? const!
+  fmap      -> inside?
+  aliasing  -> sharing
+  mod(ulus) -> rem(ainder)?
+  overload  -> ??
+  nontermination -> divergence?
+  string    -> text?
+  iterators: more() -> yes/no?
+    represent regexps' ?, *, and + in types, as uniformly/compatibly as possible?
+  mutable/immutable -> read-only/read-write? (mut -> rw? const -> ro? eh :\)
+  row -> ? ("args"? "types"? "glob"? "pack"? what else do languages call these...? environment?)
+  getter-setterish pairs:
+    get     + set   -> single-valued cell  : IORef
+    read    + write -> synchronous stream  : File
+    take    + put   -> nullable cell?      : Ref(Maybe), MVar
+    receive + send  -> asynchronous stream : Socket, Channel...
+
+
+misc syntax
+  what about a postfix % operator which is equivalent to (/ 100)?
+    65% -> 0.65
+    kinda pointless but maybe nice, after all humans write 65% instead of 0.65 for a reason
+    actually probably not a postfix operator - only on literals! (a + b)% ugh
+    so `%` is essentially a literal form for floats
+  do we want some kind of special syntax for complex / imaginary numbers?
+    (an `i` suffix conflicts with "integer"...)
+  we should have some kind of HOF sugar... perhaps a fn argument with a particular name can be provided as a trailing block?
+    what if it has arguments?
+    though we /know/ what its name will be... would it be evil to just bring it into scope? (yeah, maybe)
+      perhaps allow it implicitly if it has a standard name - break/continue/return/goto/yield/throw/... - and isn't shadowed, otherwise require it to be explicit?
+        would it be conceivably possible to pre-declare these as global fns which can only be called inside the appropriate HOF...?
+          seems weird, at least, and doesn't deal with nesting/shadowing
+          maybe some fancy effect-typing/handling thing
+    (what's the name? `body`? `block`? `do`?)
+  perhaps we want sugar for `let x = foo.x, y = foo.y, ...`
+    `let (x, y) = foo` a la Rust?f
+    `import x, y from foo`?
+      `import foo.(x, y)`?
+    what about construction vs. matching duality (incl. fn named args) and renaming?
+      `let (x as myX, y as myY) = foo`
+      `foo(x myX, y myY)` OR `foo(myX as x, myY as y)`?
+        `let (x myX, y myY) = foo` or `let (myX x, myY y) = foo`??
+  how do we deal with import conflicts? just shadowing? seems unfortunate? just warn?
+  #inline, #inline(please), #inline(force), #inline(never), likewise #specialize
+  how do we resolve `foo.bar()` as `(foo.bar)()` vs. `bar(foo)`???
+    would be unfortunate to actually require `(foo.bar)()` :\
+  if `foo.bar()` is just `foo(bar)`, and type application is just `foo(T)`...
+    ...does that mean you could also do `T.foo()`?
+    `Int.newArray()` e.g.
+    why not?
+      perhaps this would conflict with the possibility of `(Int.newArray)()`...
+      which is the same problem as above
+  really feels like we want different notation for member access and method calls :-(
+    but the whole reason we want both is familiarity (and for methods, because left-to-right is nicer)
+    other options: a->b, a/b, (a, b).(c, d)
+  we could actually do postfix function calls as just literally postfix functions
+    instead of `draw(shape myCircle, at (0, 0))`, `(shape myCircle, at (0, 0))draw`
+    but that looks weird, and doesn't address the basic reason method calls are desirable
+    which is that functions tend to return a _single_ result, and you often want to apply another function immediately to that result ("chaining")
+      (i.e. you don't want to go back to the beginning to add more opening parantheses)
+  operators are just special syntax for particular names - `a + b` always unconditionally desugars to `add(a, b)` (or `a.add(b)`) *everywhere*
+    do we also want to overload function calls as "call"?
+      closures would be `type fn(A) -> B = (type Env, env: Env, call: rawfn(Env, A) -> B)`
+        hmm... this doesn't  actually work?
+        how would/could Rust's approach be transliterated?
+      also this would presumably involve losing eta - is that bad? did we have it?
+  presumably we'd also want range types like in Rust? `1...5` etc.
+    literals vs. patterns vs. types ...
+  `new` treats a pure thing as impure for generativity? (~ Sylph)
+  have a `HardwareTypes` module for things like `Int8`, `UInt32`, etc. (and maybe `Float32`/`Float64`) (and maybe SIMD stuff?)
+    can we have SIMD-sized records automatically be represented as SIMD?
+    if the only restriction is no interior references... (also alignment?)
+  what should the entry point be? just have `main()`?
+    a global `io { }` block?
+  we could use `where` for both refinement types and comprehensions
+  uninhabited type is what - `!`? `never`? `Never`?
+    `fn(type T) -> T` is `forall a. a`, question here is `enum Never { }`
+  what do disjunctive patterns look like? (case yes, case no as yes)???
+  should we use [Int] and [1, 2, 3] for arrays, iterators, or both?
+    both arrays and ranges naturally translate to iterators
+    some kind of implicit conversion...? :\
+  acronym capitalization: URL, HTML instead of Url, Html
+  should we perhaps use an `I` prefix for interfaces e.g. `IMonad`, or is this meaningless for us?
+  various keyword-commands should also just look like function calls: return(5), yield(6), break("foo"), continue(), ...
+    why: intuition that "something is happening here" (function call <-> effects)
+    they do actually "return a value" (`!`)
+    they might be _actual_ function calls in the future? (delimited continuations or whatever...)
+    but perhaps it makes sense to visually distinguish "function calls" which transfer control flow vs. ones which don't?
+      `return 10`, `return!(10)`, `return! 10` ...
+  map() -> foreach()? (what about fold?)
+  syntax for functional record update (of existing field, vs adding new one)?
+    what about field renaming? `foo with (x as yes, y as no)` or something...
+  this/that special identifiers?
+    relationship to $0/$1/etc?
+  allow `enum(ROW)` and `struct(ROW)` instead of or in addition to `(ROW)` and `(case ROW...)`?
+  names of methods for SQL-y stuff (relations) should follow LINQ?
+    which of course itself follows SQL
+    map()    -> select()
+    filter() -> where()
+  passive voice for non-destructive/non-effectful, active voice for destructive/effectful functions
+    e.g. `let list = list.sorted()`; `list.sort()`
+  syntax for holes: `TODO`? :) (should they have names though?)
+  if semicolons are optional, how do we explicitly ignore a return value? .ignore()? .discard()? .unused()? anything shorter? .whatever()? :)
+  "functional update syntax" for dicts and arrays analogously to records?
+  instead of numeric literal suffixes: a . indicates Float, presence of +/- means Int, otherwise UInt?
+  #cfg -> #if?
+
+keywords:
+  decls:   let, fn, extern, type, case
+  effects: const, mut, io, atomic, dangerous, throws, returns
+  control: match, if/else, for/loop/while, continue/break, throw/try/catch, yield
+  misc:    is, in, as, do, this/that, with, where, pub/priv, auto, trusted
+
+names of effects should ideally read as adjectives
+  dangerous, mutable (or mutating), const (or pure), atomic, async, ...
+  but `io` doesn't really fit :\ but what else is there?
+    perhaps `active`? `global mut`? eh
+
+it's annoying that we want `:` to be "the" type ascription operator, but then record types `(a: Foo, b: Bar)` and values `(a foo(), b bar())` aren't symmetric
+can we actually overload `:` to mean _both_ type ascription and value binding, based on whether the RHS is a type or a value (uppercase or lowercase)?
+  this probably runs into problems once you get to signatures and impredicativity and things...
+  also, would we want to?
+  this is similar to being able to overload function application to types/terms based on lexical category?
+
+use $N suffix to refer to the Nth field with the given name?
+  foo$1, foo$2, etc.
+  for unnamed (tuple) fields, simply $1, $2, etc.
+  fn add_ints(Int, Int) { $1 + $2 }
+  generally speaking, functions with unnamed arguments should be commutative?
+  if parameter can be given a reasonable name, no reason for both callee /and/ caller not to use it
+  (how does this relate, if at all, to Swift's compact closure syntax?)
+    normally you'd write fn(x, y) x + y
+    but if you want x, y to be anonymous?
+    can't very well write _neither_ the name nor the type...
+    `fn(Int, Int) $1 + $2` (not shorter)?
+    `fn(,) $1 + $2` (can't distinguish nullary vs unary)?
+    `fn(_, _) $1 + $2`?
+    `fn(...) $1 + $2`?
+    `fn $1 + $2`?
+    `$1 + $2` (what's the scope)?
+  is accessing a tuple field then also `foo.$1`? or is the rule that you need $ only if you want to specify _both_ the name and the position?
+  (is there any way to refer to the full tuple of fn arguments itself? `args` perhaps? do you want to? can you splice `args` into another fn call as-is? do you want to?)
+  still potentially ambiguous: tuple type vs. tuple of types?
+  also how to disambiguate tuple-args from punning at calls?
+  also how does pattern matching on tuples work??
+    binding to names is for records, pushing $N into scope is weird..? (or not?)
+
+A syntactic intuition: suppose sum types ("enumerations"?) are written (case foo: A, case bar: B)
+  what about (baz: C, case quux: D)? 
+    (should we also give fields a "sigil", say `let`?)
+    (is there anything which works well in both "record field" and "item/variable declaration" position?)
+      good: var, val
+      bad: let, def
+      actually... maybe def isn't so bad?
+        a module(-as-a-record), after all, is a collection of definitions
+      if we do this then tuples might stop looking like tuples though - `(def Int, def Int)`
+  would say you don't get to mix cases and fields
+  but what if you do?
+  a (...) would contain all of its fields and exactly one of its cases
+  (how nice/convenient/useful/intuitive is this?)
+  mathematically: PRODUCT(fields) * SUM(cases)
+  ugliness: if there are no cases it's a bottom type!! even if there are fields
+  so you always need at least one case, which is ugly
+  (though an enumeration with a single case is weird even w/o this)
+  is there any we can fudge this that doesn't suck?
+
+everything-is-a-record vs. generic types
+  the way we customarily want to write our generics doesn't quite match the record-based logic
+  we'd want to write e.g. `type Maybe(T) = (case yes: T, case no)`, and invoke it as e.g. `Maybe(Int)`
+  but our options are actually
+    `type Maybe(type) = (case yes: $0, case no)`, `Maybe(Int)`
+    or `type Maybe(T: type) = (case yes: T, case no)`, `Maybe(T Int)`
+    (or something)
+  perhaps
+    List(Of Int)
+    fn List(Of) { type (case nil, case cons(head: Of, tail: List(Of)) }
+
+implicit generics parameters, similarly to lifetime elision in Rust...?
+  reverse: fn(List) -> List
+
+Just have operators be aliases for functions of a particular name - i.e. desugars even before name resolution?
+  a + b ==> add(a, b); then look for `add`

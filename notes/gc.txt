@@ -1,0 +1,120 @@
+memory management
+  reference counting
+    + deterministic destruction (RAII)
+    + low latency
+    + can test whether rc == 1 (COW? what else?)
+    - cycles
+    - not good for interior pointers (need to hold a separate pointer to the rc!!)
+    - every heap object needs a reference count field
+    - lots of rc count twiddling
+    - RCs probably need to be atomic in the multithreaded case
+    this is probably only a live option if we both:
+      * choose to disallow any sort of shared-memory concurrency/parallelism (so we can avoid atomic ops), and
+      * choose to disallow cycles in the heap
+    even then it means that every time we copy or drop an Int we have to check if it's a pointer, and twiddle the rc... ugh.
+    and if we want to allow interior references every pointer would need to be fat! ugh ugh ugh
+    otoh it'd let us do nice copy-on-write things sometimes with freeze/thaw and so on
+      (i.e. dynamic tracking of linearity?)
+  tracing GC (many kinds)
+    + handles cycles
+    + can keep heap objects compact (if we avoid headers and use per-type tracing functions, which we should)
+    + at least have a reasonable hope of supporting interior pointers
+    - unpredictable pause times
+    - heap is like 4x larger? 2x once to keep garbage around until collection, 2x again for two-space
+    - need write barriers for generational, read barriers for incremental/concurrent(?)
+    - general complexity (barriers, finalizers, weak refs, stable/foreign ptrs, card marking, ... ugh)
+  also region-based...?
+    need to learn more, but heard that it's hard-to-predict and volatile? (eg JHC)
+    look at: JHC, MLKit?
+    (static vs dynamic regions?)
+    apparently Ur uses this?? look into it!
+      "any expression of a pointer-free type may be evaluated in its own region, since there is no way for pointers to flow indirectly from within an expression to the rest of the code"
+        complications here... mutability of course, so we also need the expression to be pure
+        what about `const fn()` memoization?
+          we would need to have these allocate in the region /they were created in/, not where they're forced... iow they would have to capture the region
+            is this bad for any reason?
+        in the context of pure expressions, "deallocate the region if there are no pointers in the return type" is actually a special case of "evacuate any pointers in the return type before deallocating"
+          of course that evacuation/traverse could take an unbounded amount of time
+      "We note that this simple region-based memory management is not suitable for all applications. Rather, it is tuned to provide good performance for typical Web applications that avoid heavy computation, focusing instead on querying data sources and rendering the results. Many classic applications of functional programming will be poor fits for the model."
+        can we still perhaps _mix_ this with GC though?
+        like, make a region for pure expressions returning pointerless values?
+        this seems like a similar optimization as generational gc... except no tracing required
+        in this scenario the region would give us a guarantee that the given memory can be deallocated at that point
+        but perhaps the GC could come in and free up parts of it if the function takes too long and allocates a lot?
+        could we reserve GC for only those stack-records (and their transitive closures... :\) which end up referenced by returned closures?
+    how does region-based memory management handle cycles?
+    how does it relate to "unified theory of garbage collection", w.r.t. determining reference counts and such?
+      region-based == reference-counting for entire regions at once, statically inferred when it goes to 0?
+      or... "region inference is compile-time tracing"?
+      both reference counted single objects and tracing garbage collected whole heaps are instances of degenerate regions...? (at opposite extremes)
+      also "rootedness" reference counts in e.g. rust-gc...
+    (how (well)) can region-based memory management be hybridized with GC and/or RC?
+is there anything that scales smoothly from latency-priority to throughput-priority, like how intensional type analysis scales from whole program to separate compilation?
+can we solve the problem where the GC holds on to a big array because of a reference to a small slice (or element) of it?
+  if Array is just represented as (data: T*, length: UInt) (can be a subslice into another), in principle, why not?
+  should also have hooks into the GC?
+    collectMinor(), collectFull() (do these make any sense with an incremental/concurrent GC?)
+    disableGC(), enableGC()
+    longLived(), shortLived() hints? (a la likely()/unlikely())
+      perhaps these should be attributes, like #inline?
+    can these be `const fn`s - they seem like no-ops from a semantic perspective?
+  why can't we do the thing again where big objects e.g. arrays are reference-counted for COW, everything else GC...?
+    (well you can have small arrays - but in that case COW is not so important?)
+    (see also "Ulterior reference counting" - though that's based on object age, not size)
+    but the actual answer here is probably similar to why you can't mutate through `& &mut T` in Rust
+      to get an &mut out of Rc<Rc<T>>, _both_ have to have rc == 1
+      whereas we would have Gc<Rc<T>>, and can't even test the outer one
+☀❂ eevee ❂☀ ‏@eevee     16h16 hours ago @oshepherd "anywhere" includes "as a library in someone else's program of an arbitrary language"
+Owen Shepherd ‏@oshepherd 16h16 hours ago @eevee     That requirement pretty much obligates your language to have no GC. Both a blessing and a curse
+  Can we rely on _a_ garbage collector but be able delegate to an existing / host app's collector ... ?
+  this seems like essentially the same thing as being able to run on JVM, CLR, JS... but more general?
+  are there any language design things which are important for making this possible?
+    tail calls for example...
+    classic case: monads, where it's really important for indirect calls to have TCE
+      possible partial solutions
+        #1: no TCE, but at least unlimited stack ("green stacks")? = stack frames allocated on heap?
+          (what do function calls look like in this case...? given we'd want to avoid the native stack entirely(?))
+        #2: mark required TCE sites with `#tail`, inline/specialize everything until these can be statically dispatched and TCEd? _can_ this work?
+as the mutator traverses and accesses data on the heap, it is in effect proving that it to be reachable. can we take advantage of this so that the GC has less work to do and doesn't have to re-trace it all over again?
+  "Reference counting is a widely employed memory management technique, in which garbage collection operations are interleaved with computation." :-)
+  iow the mark phase of a mark/sweep could be interleaved into the mutator (but instead of rc, just set marked bits)? or copying phase of Cheney?
+    when does this marking _stop_ being valid? when does it _start_ to make sense?
+    (by definition, everything left over after the previous sweep was live at that point...)
+"completely abstract" values do not need to be retained: in `(type T, foo: T)`, there is no way to actually do anything with a `T`, and `foo` can be reclaimed
+  see also: closures / dangling pointers (of "type-preserving garbage collection", MLKit), scoped mutation (just allocate on a stack and deallocate unconditionally?)
+  (can this basic idea be generalized / taken further for other things?)
+thunks (`fn() -> T`) should always allocate the `T` directly into the old generation (if that's where they are themselves of course)?
+  ~ "capturing the region in the closure"
+  seems like a good idea because:
+    * no pointers from the old generation to the new generation are created - can avoid write barriers?
+    * given that the thunk is referenced within the old generation (else it wouldn't be there), the `T` can also be presumed to live as long
+  what about intermediate/temporary allocation while creating/computing the `T`???
+    e.g. `fn() -> Int { sum([1..100]) }`; the [1..100] here
+    is it the case that: any memory allocated by the thunk is either part of the `T`, or is garbage after the thunk returns? (~Ur/Web regions)
+      the only exception seems to be if evaluation of the thunk forces another thunk from its closure - in which case we can just apply the same rule recursively?
+    if it is true, can we statically tell which is which???
+  what if garbage collection happens while running the thunk?
+    in this case no writeback / no mutation has taken place yet, so it isn't relevant(?)
+http://factor-language.blogspot.hu/2009/11/mark-compact-garbage-collection-for.html
+https://github.com/golang/proposal/blob/master/design/12800-sweep-free-alloc.md
+  this could enable small-slice-of-big-array-doesn't-keep-around-whole-array:
+    arrays are allocated not as large objects but in spans whose object size matches their element type?
+    the GC routine for Array(T) sets (only) those bits in the mark bitmap which actually correspond to the slice
+    (where else was this kind of thing an issue?)
+  how do dense mark bitmaps square with compact regions?
+first-pass memory management: just copy/port/transliterate Go's GC?
+https://twitter.com/thezerobit/status/656613597393481728 "Erlang: each lightweight thread has its own garbage heap, msgs copied betwixt threads, refcounted shared large object heap"
+
+"bob Harper et all did prove a few years ago that certain gc strategies do result in cache optimal memory layouts"
+"However, it does still have an ongoing cost - memory is "rented" in a GC, rather than "bought" and "sold" as with malloc/free. The goal is to reduce the ongoing cost as much as possible, which is what generational GC aims at, by looking at older objects less frequently." - Simon Marlow
+https://ghc.haskell.org/trac/ghc/ticket/9052 stable generation
+
+In the ownership model the GC itself is an "owner"
+  If you have multiple GCs, shared data must be reference counted, an increment for each *GC* holding a reference
+  The reason GC (otherwise) gets to move stuff around on the heap is because its reference count, in this sense, is 1
+  Interpretations of "owns" as "may deallocate/invalidate" and "has a pointer to"
+    Normally for a GC-ed heap, neither is allowed for anything outside of it
+  this is if a GC-ed heap has references to an RCed object - what about the converse?
+    perhaps an RCed thing... can own an entire GCed heap?
+      i.o.w. a (compact) region?
+    

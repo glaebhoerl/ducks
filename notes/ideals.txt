@@ -1,0 +1,163 @@
+"Most programming languages start out aiming to be simple, but end up just settling for being powerful."
+http://dave.cheney.net/2015/03/08/simplicity-and-collaboration
+
+"Design patterns is always sign of weakness in language. examples is monad, zipper, lens and persistent data structure"
+https://twitter.com/plt_borat/status/228119470621732864
+
+A scalable language:
+  from novices to experts
+  from small teams to large
+  from small, quick-and-dirty programs to big, important, long-lived code bases
+  from whole-program to separate compilation
+  from one processor to many
+  from one machine to many(?)
+  from small heaps to large
+  from one platform to many
+
+"scale invariance"
+  no distinguished "global scope" or "module scope"
+  large-scale structure is same as small-scale structure: records
+  separate <-> whole program compilation (intensional type analysis)
+    "Essentially, the more the dev is willing to tell us about their code, the more we should be able to reward them by speeding it up."
+    where "how much they're willing to tell us" -> "how much of the program the compiler gets to see at once"
+  scales from Lua to C#
+  there was another thing??
+
+two areas of focus:
+  bashing "plain old data" around (as easy, flexible, enjoyable, powerful, etc. as possible)
+  abstraction (powerful, granular(?), airtight)
+  maybe a third: control flow? (w/ continuationy stuff)
+  -
+  data + control + abstraction
+  (AbCD :\)
+
+"I’m told one of the very big reasons Lua is amenable to embedding is that it’s trivial to disallow IO: you just don’t have the io module."
+
+good things about Go:
+ * takes simplicity seriously, consensus required to add a feature
+ * explicit pointers
+ * interior references
+ * no glob imports
+ * interfaces (data/interface split, no inheritance)
+https://talks.golang.org/2012/splash.article
+
+Fully intended to compete with
+  Java
+  C#
+  Go
+  Swift
+Largely intended to compete with
+  JavaScript
+  Python
+  Ruby
+  F# (^?)
+  Scala
+  Haskell
+  OCaml
+Only incidentally intended to compete with
+  Rust
+  C++
+  Idris
+Not at all intended to compete with
+  C
+  Agda
+  Coq
+
+Shorter version: anything that is GCed and not dependently typed
+
+Important platforms
+  Native/C (Unix+Windows)
+  JavaScript
+  JVM
+  .NET
+https://glyph.twistedmatrix.com/2015/09/software-you-can-use.html
+
+GC for simplicity, but should be low-latency/predictable/controllable enough for use with games
+  RT GC, tradeoff: high peak memory use? blegh
+  (Or RC? Question of cycles...)
+  Does "compacting reference counting" make any sense? probs not
+
+"I think it's high time we started learning lessons of history. No one sane will ever start using a new language in their projects until you show them a few cool development tools supporting it, tell them a couple of success stories, and show a dozen of programmers working with that language and living close by. As for programmers, they will never - except probably for the youngest ones - spend their time and health on learning another "very best" language until you show them a few cool development tools (not a frob like Racer) and a couple of tens of thousands of ready-made libraries (not "experimental" or "unstable" or stuff like that), tell them a couple of success stories, and show them a dozen of open vacancies in their city or town."
+
+"Change Function = F (Perceived Crisis / Perceived Pain of  Adoption)"
+
+need to piggyback off of some existing library ecosystem... Rust???
+should be a strong glue language!! (a la Python... Julia?)
+  http://docs.julialang.org/en/release-0.3/manual/calling-c-and-fortran-code/
+  http://docs.julialang.org/en/release-0.3/manual/running-external-programs/
+Largest ecosystems
+  Web (JavaScript)
+  Mobile/Android (Java)
+  Mobile/iPhone (Objective-C, Swift)
+  Native (C, C++, Rust)
+  Managed/JVM (Java, Scala, Clojure, ...)
+  Managed/.NET (C#, F#, ...)
+  Dynamic (Python, Ruby, ...)
+  Other (Go, Haskell, OCaml, ...)
+
+can we "solve" the general cross-language-compatibility problem somehow?? (Dani...)
+  To what extent can every other type system be embedded, or encoded, into a full-spectrum dependently typed one...?
+  That, and control over representations
+
+Similar "change the world" projects / people
+  Unison (Paul Chisuiano)
+  Morte (Gabriel Gonzalez)
+  Eve (Chris Granger)
+  Awelon (David Barbour)
+  Lamdu (Peaker)
+  Elm (Evan Czaplicki)
+  Daan Leijen
+  Bret Victor
+  John A. de Goes
+  Gary Bernhardt
+  http://eev.ee/blog/2015/02/28/sylph-the-programming-language-i-want/
+  --
+  julesjacobs, gasche, neelk, pigworker, graydon... (just really smart)
+
+Should be usable as:
+  * Data description language (Lua, JSON)
+  * Embedded "scripting" language (Lua)
+  * Embedded database and query language (SQLite)
+  * Application development language (ML, C#, Java)
+
+"It’s more general than a test, it says the pieces of the system are connected correctly."
+
+> the “efficiency, productivity, generality: pick two” notion in language design
+
+simplicity is not so simple:
+ * simplicity of syntax
+ * simplicity of specification
+ * simplicity of implementation
+ * simplicity of comprehension
+ * simplicity of programs
+comprehension: should not keep people with background in mainstream languages from being able to even
+  minimize the number of variables and/or classes of variables
+  variables are confusing!! (see: "too many type variables aaaagh" syndrome in Haskell)
+    type variables and 'normal' variables are plenty difficult enough...
+    they are confusing because they require keeping contexts
+    and humans are bad at keeping track of contexts in their heads (small short-term memory)
+  minimize number of things to be explicitly polymorphic over
+  once you have explicit effect variables and lifetime variables and so on and so forth you have lost
+minimize bureaucracy and ceremony (coordination costs)
+minimize language-imposed rigid structures
+  "malleable"
+minimize duplication within the language (term level vs. type level vs. module level vs. ...)
+implementation: should be simple enough to re-implement several different ways / in several different languages?
+  like how there are many C compilers and people occasionally write one as a hobby
+  (to a lesser extent, Haskell)
+other requirements: good FFI
+prefer implicit interfaces/contracts to explicit
+  disfavor global declarations which have to be explicitly imported/depended on/declared/coordinated/organized around
+strictly evaluated, TCE
+what should it be called? RustScript? Duck! but there is already a Duck... then Ducks!
+  's' stands for: simple, static, structural, "scale invariance", ...
+  Duckslang
+
+> I view programming as making a series of choices; from the macro level which library you're going to pick and how you're going to architect your program to the micro level of how you're going to process this collection into that collection to how you're going to format your code. The difficulty of programming depends on how many of those choices you have to make, and for each choice how easy it is to pick the right alternative.
+> 
+> In Python you have many fewer choices to make, and which alternative is the right one is much more obvious. At the macro level you'll use iterators/generators, no choice to make here. But even at the micro level there are fewer choices. For simple data processing in Python you just use a generator comprehension, always. In Haskell you can use a list comprehension, or use map/filter/etc, or a more sophisticated function. When you've decided to use map/filter, then you still have to decide HOW you're going to do it. Partially applied and composed with .? Or maybe applied to a specific collection? Will you then use nested function calls, or a series of composed functions with . and call it with $ at the end? Across the whole spectrum from which library you're going to pick all the way to minor syntax variations there are just far more choices to make.
+> 
+> There are many things I don't like about Python, but one thing I love is the adherence to its famous principle:
+
+> There should be one -- and preferably only one -- obvious way to do it. -- julesjacobs
+

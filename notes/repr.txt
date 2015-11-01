@@ -1,0 +1,191 @@
+data representation
+  boxing
+  "intensional type analysis"
+
+Intensional type analysis
+  Types are not (necessarily) erased
+  Where there is a `type` in a record or a function arg/ret, that actually has a runtime representation (likely size+alignment)
+  Get to use unboxed data and specialized functions everywhere(?)
+  Monomorphic code is fast, polymorphic code that can be inlined/specialized is fast
+  Polymorphic code that can't be inlined/specialized (RankNTypes?) is slow (probably Really Slow)
+  But even in that case can we just make the function switch-case to a particular specialized instantiation?
+    With actual Really Slow runtime offsetting and stuff only as the ultimate fallback?
+    In what conditions would we still need the fallback?
+    How many different specializations would we need in practice? Just one for each (Size, Alignment)? How many different ones occur in practice?
+    What about the "behavioral specialization": templates+overloading / traits / etc.?
+      Does this just correspond to inlining of HOF arguments? and/or module arguments. probably.
+    What if the required specialization is in the caller's library, not the function's??
+      Perhaps use a slower path to try to dispatch to these, global hash table or weak linking or something?
+      switch-case local specs -> lookup remote specs -> fallback slow poly code
+    Higher-rank polymorphic code could also explicitly use `const Ref(T)` to avoid runtime size/alignment calculations, when beneficial?
+      Or can client code make this choice instead?
+      (Presumably there will always be pre-specialized code it can switch to that works for `Ref`-sized things?)
+  And what about for existentials? (Do we even have that kind of clear distinction in our 1ML-ish system?)
+    We just store the size/alignment, and the poly. function switch-cases on it as appropriate?
+    This is _better_ than the boxing story because we get to store it unboxed?!
+      does it let us store it unboxed, or just store it at all (behind a pointer)??
+      if the latter what's the precise rule for when an existential-y type is repr.-ed as a pointer?
+        (type T, (Int, T)) is that `(Type, *(Int, T))` or `(Type, (Int, *T))`? or `*(Type, (Int, T))`?
+        probably the first? if we learn what T is, we should be able to pass (Int, T) to a function that expects it as-is
+    (Still the question of the HOF arg inlining)
+  Potential niceness of ITA is it provides a gradual/seamless transition between whole-program and separate compilation, which are opposite extremes...?
+    Choose how much of the program the optimizer gets to see at once, and speed will scale accordingly (if not linearly)
+    Don't have to implement a whole-program and a separate-compiler separately; both of them fall out
+  This also solves the Array vs. ByteArray problem! can just have Array(Byte) and it'll work
+    if we no longer require uniform repr, does that also let us play other advanced tricks with "nonparametric" optimized representations??
+      what does a generic version of a function over Option<T> look like if the repr of Option<T> depends on T?
+      needs to know size/alignment, okay... what else? how to construct / deconstruct (pattern match)?
+      and call other fns, but those can also be depended upon to have generic impls
+      ("torture test") what about higher-order, higher-rank, _and_ higher-kinded functions?
+  Can we store size+alignment in a more efficient way? Size as multiple of alignment? Alignment probably does have a fairly small upper bound (modulo SIMD)?
+  How to represent records is still a tough question... they are so fundamental, and hard to optimize both field access and extension
+    Could represent it like C structs, but then updates suck, and maybe subtyping too
+    Or some HAMT-like thing, but then indexing and locality suffers
+    (Indexing is even worse if field size isn't constant?)
+    Bigger question is actually passing a larger record to a function which wants only part of it
+      Having to make a copy sucks!
+    If we do this kind of row-polymorphically we can just take the same strategy:
+      In the slow general case field offsets are passed at runtime
+      Aggressively inline and specialize for the row variables functions are actually instantiated with
+      The polymorphic impl first tries to dispatch to a specialized impl before falling back on the slow runtime-evidence version
+      ...but what would we actually switch-case _on_? what identifies a row type? ..perhaps the actual field offsets?
+        can this actually be efficient? would the combinatorial explosion not swamp any gains?
+          i.e. is it actually cheaper to dispatch based on the offsets than to just fetch the data using them?
+          though the specialized versions could of course themselves be inlined into the general one, and further optimized
+        what's the runtime representation of a row?
+          http://lambda-the-ultimate.org/node/3711#comment-52972
+          but that's not enough if struct elements are in non-lexical order (alphabetical, padding-optimized, w/e), and also of non-uniform size
+          maybe the runtime evidence for a row variable would actually be a function mapping labels to offsets in a record extended with that row...?
+          or some kind of pointer to a table?
+      row-polymorphism substitutes for subtyping here, but what about _returning_ records, sum types, etc.?
+      if we do specialized representations like bit-packing bools then these would probably have to be something like _functions_? (lenses?)
+      there's a big difference between every type having a different representation that's unboxed, and the representation _depending on the containing type_
+  Also where do the pointers go? Where are they necessary? E.g. recursively-typed structures? Given equirecursive types
+    Calculate loop breakers? Seems bad for predictability
+    Can we allocate a whole structure inline if we know it up-front? (a la proposed recursive unsized enums in Rust?)
+      This only works as long as the structure doesn't branch?
+      Also, _mutual_ recursion
+  How do the size/alignment of record and variant types depend on their rows?
+  other potential benefits: easier/better compatibility with foreign types, easier/better interpreter-compiler compatibility?
+  what other things are part of the runtime representation of a `type`?
+    a GC routine? a type ID? a type / layout description? a name? a pretty-printer routine for debugging?
+    (probably these would not be monomorphized but in terms of other types? at least for generic types...)
+  if everything is semantically by-value (except mutable references), and we neither have everything-is-a-pointer unirepr, when do we actually _need_ to use pointers??
+    (for recursive structures? precisely when?)
+      recursives types vs. recursive data vs. recursive functions
+      if we think in terms of fixpoint operators a recursive-occurrence is also an abstract type
+        if we actually write it as `fn List(Of) { type (case end, case cons: (head Of, tail List(Of))) }`, likewise!
+      do recursive types correspond to type-level recursive functions, type-level recursive data... or both?
+    if we have more freedom to choose object reprs/sizes, does that also give us more freedom in terms of memory management schemes?
+      e.g. if we not every integer but only larger (define larger) structures need reference counts, does RC become more practical?
+    compare/contrast with DSTs in Rust...
+      can we make a new type for each closure and specialize based on it, even if this is not apparent in the source?
+        possibly for fns, unboxing/specializing into composite types seems like a taller order
+          seems like it should be possible for whole program opt., at least? (but how, and can it be incrementalized?)
+        also, specialization and unboxing are independent
+          &Fn() vs. &F where F: Fn() vs. F where F: Fn()
+        should also be careful not to counterproductively destroy sharing
+        where of course our `fn(a: A) -> B` is `(Env: type, env: Env, fn: rawfn(env: Env, a: A) -> B)`
+          so perhaps we can do transformations on that basis
+          (should we actually expose this???)
+    things which are already "pointer-like" (sizeof Foo(T) constant forall T):
+      Ref(T), Array(T), fn(T), fn() -> T
+      (and presumably the compiler can track these through user-defined types because the observable semantics stay the same unlike Rust?)
+    we could be like "garbage-collected Rust" and actually require using `Ref(T)` for recursive and existential types...
+      ...but that sounds unfortunate.
+      ...though for recursive types this has the benefit that you could automatically write `const Tree(T)` and `mut Tree(T)` and whatever?
+        would have to be careful that `const Ref(T)` doesn't have identity (I think?)
+        and even so requiring it for existential/generic types and so on still seems bad
+          you'd need some kind of size-parametricity tracking which is definitely way beyond scope
+        (and `mut Tree` wouldn't actually even be a tree - more like a graph?)
+          (how) could you freeze one...?
+  this also lets us nicely do the per-type specialized GC tracing function stuff
+    what extra costs do we have to pay for generational/incremental/concurrent collection?
+  if types have physical representation in memory as size+alignment+gc+etc., then type-specialization (monomorphization) is just a special case of value-specialization?
+    basically we specialize all functions for every type they are used with
+    and then we perhaps also want to "always" specialize by certain higher-order dictionary arguments they get passed to match e.g. Rust traits
+    iow, goal-based optimization? instead of numeric heuristics for when to inline/whatever, specific goals: try to eliminate as many as possible runtime size/alignment calculations, indirect calls, ...
+      (so essentially, operations known to be expensive)
+      -> predictable cost model?
+      know which things are expected to be cheap -> make sure they are cheap
+    but then can/do we want to generalize this?
+      types we can specialize by (which can vary): sum types, function types, ...?
+    like would it be remotely practical to try to do some form of supercompilation instead of more special-cased optimizations?
+  can we make an interpreter, separate-program, and whole-program compiler all binary-compatible?
+    (though might be self-contradictory for WPC... implies there is nothing outside to be compatible with)
+    what about a JIT?
+  Being able to actually codegen polymorphic functions directly has two additional potential benefits:
+    Stable ABIs for generic code
+      How does this interact with row polymorphism and stuff??
+    Proprietary libraries
+
+Relative pointers, SHM, and so on
+  can copy a whole graph into a single block (region) of memory, use it as-is, send it, and use it as-is on the receiver
+  important points:
+    should not contain any mutable stuff (so that it's "closed" and stays that way)
+      (how?)
+    lazy thunks (`fn() -> T`) also seem questionable - can the evaluated results also get appended to the same region?
+      maybe we want some kind of thing like Cap'n Proto where you can have multiple segments, in case the initially allocated memory for a region turns out to be not enough
+      or maybe we just do exponential reallocation like Vec? (with mremap?)
+        (how do relative pointers interact with this...?)
+    if we have a compact region, we never need to trace it for GC!!
+      (because, of course, nothing can be pointing out of it)
+      this seems related to the Ur/Web style region allocation stuff?
+        if the pure fn returns a pointer-free value, everything it allocated can be freed right away
+        if it returns a value with pointers, it can be compacted into a region which never again has to be traced - and then the rest can be freed...?
+        (so what's actually the relationship??)
+          can we allocate/construct as a compact region directly, instead of as a separate step afterwards?
+          if we do this _always_, when/what do we still actually have to trace??
+          (limiting/confounding factors of course: mutability, (loss/preservation of) sharing)
+          if a pure fn returns a pointer-containing value, they could be pointing at/into its arguments - the results of earlier fns
+          (in this case, copying would destroy sharing)
+            so we should track not only the pointerness of the return value, but also of the input arguments
+            and put-the-result-into-a-compact-region makes sense if the result has pointers while the arguments don't
+            (logically, one corresponds to a fold and the other to an unfold...?)
+            what about _closures_?
+            we can probably also go beyond just pointerness look at the actual types -- you can't cons [Int] to [Float]
+          w.r.t. sharing, maybe explicit `Ref`s are relevant?
+          for the appending-a-functional-update-to-a-compact-region thing, maybe we want to expose a mutable interface...?
+            a la modifyIORef / modifySTRef
+            this should prevent separate updates from stepping on each others' toes and undoing each others' work (...right?!)
+              but this seems like it would fail if the update is type-changing :-(
+              in that case it seems we'd have to track linearity :-(
+              so perhaps we want two methods - type-preserving update-in-place, and type-changing copyAndUpdate?
+                (again the similarities to arrays/Vecs...)
+                if we repeatedly cons to a `CompactMut(List(T))`, that's much like pushing to a `Vec(T)` (or `Mut(Array(T))`), just with a 2* size blowup due to the link pointers
+                  (if we have a compacted List(T), can we actually random-access it in constant time?!)
+      a given object can only be in one compact region at a time (if compact region = arena containing transitive closure of given value, _and nothing else_)
+        though compact regions can logically have compact sub-regions...?
+      "Nevertheless, for compacts this property is achievable: given an arbitrary address in the heap, we can find the associated block descriptor and use the information stored there to verify in constant time if the pointer refers to an object in a compact storage. If it does, we mark the entirety of the compact region as alive, and don’t bother tracing its contents. This test can be used by user code to check if an object is already a member of a compact, or even if it is just in normal form (so a deepseq can be omitted). Skipping tracing of the insides of compact regions has one implication: if a single object in a compact region is live, all objects in a compact region are live. This approximation can result in wasted space, as objects which become dead cannot be reclaimed. However, there a few major benefits to this approximation. First, long-lived data structures can be placed in a compact region to exclude them from garbage collection. Second, the avoidance of garbage collection means that, even in a system with copying garbage collection, the heap addresses of objects in the region are stable and do not change. Thus, compact regions serve as an alternate way of providing FFI access to Haskell objects. Finally, a “garbage collection” can be requested simply by copying the data into a new compact region, in the same manner a copying garbage collector proceeds."
+        (Sounds like having compact subregions instead of single-object-keeps-whole-alive would be preferable...? This also sounds like the case of arrays and array slices.)
+          (Might this - determining which particular elements of an array are live during tracing - actually be the _definition_ of card marking?)
+          (Two separate issues here (with a common cause): (a) we don't want to re-trace the whole every array every time (only for mutable arrays?), (b) we don't want to keep the whole thing around just for a small subslice)
+        Global tracing plus local compact/opaque/atomic regions which are not traced into seems like a reasonable/good way to integrate GC with region-based allocation...?
+      "It is folklore that in the absence of mutable data, generational garbage collection is very simple, as no mutable set must be maintained in order that a backwards pointer from the old generation to the new generation is handled properly. In this sense, a compact region is simply a generalization of generational garbage collection to have arbitrarily many tenured generations which are completely self-contained. This scheme bears similarity to distributed heaps such as that in Singularity, where each process has a local heap that can be garbage collected individually."
+        (so this is also related to the threading/concurrency model stuff...)
+          given that compact regions don't need to be traced... could this be used to allow shared memory between threads without complicating the garbage collector (as much)?
+  It seems like absolute and relative pointers are dual in some way - what way?
+    You can move an absolute pointer anywhere and it stays valid
+      Can never move the object - unless you update all the pointers
+    You can move a relatively-addressed object anywhere and it stays valid - provided all the relative pointers move with it
+      Can never move the relative pointers themselves - only if you apply a fixup
+    Seems like there should be a cleaner / clearer formulation...
+  How do relative pointers interact with copying (moving) garbage collection?
+    Do they let us do fewer pointer fixups??
+
+What should the runtime representation of effects be?
+  Are higher-rank effects something that can or should exist?
+  Either effects should be completely erased, or they should be treated "just like types"
+    We can't just monomorphize them away, because then effect polymorphism conflicts with separate compilation
+  If `const fn()` and non-const `fn()` work differently at runtime, that means they can't be completely erased...?
+
+Stacks are represented as cactus stack of records?
+  that's also nice for:
+    concurrency/parallelism
+    type-based compiler-generated GC tracing (just walk back up the stack)
+    tail calls on JVM/CLR? (but what about FFI?)
+  we can avoid a performance cliff for "vanilla" non-fancy code (that mostly just uses the stack in C-like ways) with:
+    bump-pointer allocation
+  what about not-yet-initialized and mutable variables??
+
+      allocating stack frames into a compact region? (so now they're adjacent like in a C stack, only diff is the overhead of a back-pointer per frame)

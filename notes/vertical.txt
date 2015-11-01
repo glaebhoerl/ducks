@@ -82,11 +82,6 @@ what about package management a la Nix?
   what about the half - compatibility / version consistency - that Nix doesn't solve?
   can we have some sort of automatic semver too?
 
-GC for simplicity, but should be low-latency/predictable/controllable enough for use with games
-  RT GC, tradeoff: high peak memory use? blegh
-  (Or RC? Question of cycles...)
-  Does "compacting reference counting" make any sense? probs not
-
 Tension between adherance to the ideal and re-use of existing components...
   weak SQL types, Typeable-based diagrams queries, ...
     can we layer strong types on top?
@@ -100,39 +95,6 @@ Tension between adherance to the ideal and re-use of existing components...
 What about the server side? Same thing minus Display?
   Does it make sense to write a server app using FRP?
   Does it even make sense to separate client and server? (Ur/Web?)
-
-Development environment?
-  Text editor?
-  "Intellisense" IDE?
-  Syntactic IDE (Lamdu)?
-  Semantic IDE (Unison)?
-  Spreadsheet-like thing (Chris Granger project, forget name)?
-  "lenslike editing":
-    name (ambiguity) resolution and type inference happens *in the IDE* when inputting code
-    actual source is stored fully typed and resolved
-    much more robust to upstream changes! (c.f. Rust's "minor changes")
-    when *displaying* the source, the same information is /elided/ if it "could've been resolved or inferred"
-    e.g. if the only `foo` on Monday is `Foo::foo`, writing `foo` in the IDE stores `Foo::foo` in the source
-    on Tuesday, there's still only one `foo` (`Foo::foo`), so it displays as `foo`, just as it was written
-    on Wednesday, `Bar::foo` is added; now the original `foo` *displays* as `Foo::foo`, because it is no longer unambiguous
-    likewise the "use internal IDs to identify items, not names, so renames are free and non-breaking" idea
-    taking this even FURTHER:
-      we could also use this to handle deprecation/removal!
-      currently: removal of an item is breaking; deprecation leaves the old item around and adds a new one, so is non-breaking
-      but this could be automatic: the old version is kept around by the infrastructure for as long as the client code is using it
-      but what if the old version refers to other items which have themselves been removed, or changed?
-      then we need to keep around the _transitive closure_ of the old items
-      in other words: persistent updates instead of mutation! garbage collection of no-longer-used old items!
-        (how does it relate to versioning/revisions a la git...?) (git is also persistent-update; but you can also refer to old versions explicitly)
-        how do we know when old/new are "the same"? hash trees as a la git?
-        thorny issue: when are old and new _types_ the same?? (OldFoo vs. NewFoo type errors -> breaking change)
-      "removing an item while other code was still referring to it" is similar to "deallocating (or invalidating) memory while there are still references to it"
-        (could Rust-style ownership instead of GC work here? probably not: would essentially prohibit upstream from ever making breaking changes... ~semver??)
-      could this line of thought also lead to hot-code-updates a la Erlang??
-
-IDE should be as rich and graphical as possible, but should input/output text files, so a text editor can also be used?
-
-Must be general purpose and compositional; not a "framework"
 
 Use cases:
   Games
@@ -184,50 +146,6 @@ Major platforms:
  * ...
  * Desktop GUI app
 
-
-"I think it's high time we started learning lessons of history. No one sane will ever start using a new language in their projects until you show them a few cool development tools supporting it, tell them a couple of success stories, and show a dozen of programmers working with that language and living close by. As for programmers, they will never - except probably for the youngest ones - spend their time and health on learning another "very best" language until you show them a few cool development tools (not a frob like Racer) and a couple of tens of thousands of ready-made libraries (not "experimental" or "unstable" or stuff like that), tell them a couple of success stories, and show them a dozen of open vacancies in their city or town."
-
-"Change Function = F (Perceived Crisis / Perceived Pain of  Adoption)"
-
-need to piggyback off of some existing library ecosystem... Rust???
-should be a strong glue language!! (a la Python... Julia?)
-  http://docs.julialang.org/en/release-0.3/manual/calling-c-and-fortran-code/
-  http://docs.julialang.org/en/release-0.3/manual/running-external-programs/
-Largest ecosystems
-  Web (JavaScript)
-  Mobile/Android (Java)
-  Mobile/iPhone (Objective-C, Swift)
-  Native (C, C++, Rust)
-  Managed/JVM (Java, Scala, Clojure, ...)
-  Managed/.NET (C#, F#, ...)
-  Dynamic (Python, Ruby, ...)
-  Other (Go, Haskell, OCaml, ...)
-
-can we "solve" the general cross-language-compatibility problem somehow?? (Dani...)
-  To what extent can every other type system be embedded, or encoded, into a full-spectrum dependently typed one...?
-  That, and control over representations
-
-Similar "change the world" projects / people
-  Unison (Paul Chisuiano)
-  Morte (Gabriel Gonzalez)
-  Eve (Chris Granger)
-  Awelon (David Barbour)
-  Lamdu (Peaker)
-  Elm (Evan Czaplicki)
-  Daan Leijen
-  Bret Victor
-  John A. de Goes
-  Gary Bernhardt
-  http://eev.ee/blog/2015/02/28/sylph-the-programming-language-i-want/
-  --
-  julesjacobs, gasche, neelk, pigworker, graydon... (just really smart)
-
-Should be usable as:
-  * Data description language (Lua, JSON)
-  * Embedded "scripting" language (Lua)
-  * Embedded database and query language (SQLite)
-  * Application development language (ML, C#, Java)
-
 That comment/graphic/whatever where one stack is different language for each task, other stack is Erlang, Erlang, Erlang, Erlang...
 Can we do that with Ducks?
 
@@ -247,36 +165,6 @@ Types on the Internet:
   less precisely: picture, video, text, rich text, link... app, account, ...?
   more precisely: MIME types / "file extensions" (gif vs jpeg vs png, html vs txt, ...)
 
-the syntactical resemblance between types and values hints at a "prototype-based" intuition for types
-  a type is the shape of the values it may contain
-  looks like just a value, except with types substituted in place of terms, a type being like a set of values, and the resulting type being like a cartesian product(ish)
-  ~ Tim Sweeney's Lambda Aleph
-  also Rust's `&mut self` ~ `self: &mut Self`... `Box<self>`, etc.? (this is the reverse - a value in a type position?)
-
-basic idea of smart constructors (/ curry-howard?) is "this value is guaranteed to have been created by this function"
-  associate a type with every (named) function? (plus disjunction for "either this or that function")
-  then if we have fn f() { return g() }, this means f is a subtype of g?
-  types follow control flow...
-  of course, there is also the dual: this type can only be consumed by those functions
-  what about HOFs?
-  when can/do we ever write return types?
-  what does abstraction look like?
-  what about generic types?
-  what are the primitive types?
-
-"It’s more general than a test, it says the pieces of the system are connected correctly."
-
-> the “efficiency, productivity, generality: pick two” notion in language design
-
-"Compilers are things that throw away as much information about your program as possible. They are, by their very nature, actively hostile towards development. It’d be really nice if you didn’t need to actually compile until you were ready to deploy."
-
-sync/async channels ~ eager/lazy evaluation?
-  pi calculus: "evaluation is communication"
-  buffers ~ thunks
-  buffers growing too large ~ space leaks
-  async channels and lazy eval both allow more programs to run/terminate/w/e
-  
-
 "One of the nice things about the relational model is that rela-
 tionships between tables are external. That is, children point
 to the parents (foreign key 7→ primary key relationship) as
@@ -295,3 +183,6 @@ UIs based on lenses
 http://zrho.me/posts/2015-08-23-optic-ui.html
   can we adapt this to our structural records / enumerations?
   (depends on the "how do we do lensy stuff" question...)
+
+
+perhaps the 'package repository' could also be a single big graph of records...?
