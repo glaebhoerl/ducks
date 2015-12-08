@@ -1,3 +1,6 @@
+"what I really want in life is the Lua of statically typed languages"
+https://twitter.com/garybernhardt/status/571893217806848001
+
 "Most programming languages start out aiming to be simple, but end up just settling for being powerful."
 http://dave.cheney.net/2015/03/08/simplicity-and-collaboration
 
@@ -63,7 +66,7 @@ Not at all intended to compete with
   Agda
   Coq
 
-Shorter version: anything that is GCed and not dependently typed
+Shorter version: anything that is GCed and not dependently typed!
 
 Important platforms
   Native/C (Unix+Windows)
@@ -76,10 +79,11 @@ GC for simplicity, but should be low-latency/predictable/controllable enough for
   RT GC, tradeoff: high peak memory use? blegh
   (Or RC? Question of cycles...)
   Does "compacting reference counting" make any sense? probs not
+  Just port Go 1.6's GC?
 
 "I think it's high time we started learning lessons of history. No one sane will ever start using a new language in their projects until you show them a few cool development tools supporting it, tell them a couple of success stories, and show a dozen of programmers working with that language and living close by. As for programmers, they will never - except probably for the youngest ones - spend their time and health on learning another "very best" language until you show them a few cool development tools (not a frob like Racer) and a couple of tens of thousands of ready-made libraries (not "experimental" or "unstable" or stuff like that), tell them a couple of success stories, and show them a dozen of open vacancies in their city or town."
 
-"Change Function = F (Perceived Crisis / Perceived Pain of  Adoption)"
+"Change Function = F (Perceived Crisis / Perceived Pain of  Adoption)" Meijer
 
 need to piggyback off of some existing library ecosystem... Rust???
 should be a strong glue language!! (a la Python... Julia?)
@@ -95,10 +99,6 @@ Largest ecosystems
   Dynamic (Python, Ruby, ...)
   Other (Go, Haskell, OCaml, ...)
 
-can we "solve" the general cross-language-compatibility problem somehow?? (Dani...)
-  To what extent can every other type system be embedded, or encoded, into a full-spectrum dependently typed one...?
-  That, and control over representations
-
 Similar "change the world" projects / people
   Unison (Paul Chisuiano)
   Morte (Gabriel Gonzalez)
@@ -112,7 +112,7 @@ Similar "change the world" projects / people
   Gary Bernhardt
   http://eev.ee/blog/2015/02/28/sylph-the-programming-language-i-want/
   --
-  julesjacobs, gasche, neelk, pigworker, graydon... (just really smart)
+  julesjacobs, gasche, neelk, pigworker, graydon...
 
 Should be usable as:
   * Data description language (Lua, JSON)
@@ -154,10 +154,22 @@ what should it be called? RustScript? Duck! but there is already a Duck... then 
   Duckslang
 
 > I view programming as making a series of choices; from the macro level which library you're going to pick and how you're going to architect your program to the micro level of how you're going to process this collection into that collection to how you're going to format your code. The difficulty of programming depends on how many of those choices you have to make, and for each choice how easy it is to pick the right alternative.
-> 
+>
 > In Python you have many fewer choices to make, and which alternative is the right one is much more obvious. At the macro level you'll use iterators/generators, no choice to make here. But even at the micro level there are fewer choices. For simple data processing in Python you just use a generator comprehension, always. In Haskell you can use a list comprehension, or use map/filter/etc, or a more sophisticated function. When you've decided to use map/filter, then you still have to decide HOW you're going to do it. Partially applied and composed with .? Or maybe applied to a specific collection? Will you then use nested function calls, or a series of composed functions with . and call it with $ at the end? Across the whole spectrum from which library you're going to pick all the way to minor syntax variations there are just far more choices to make.
-> 
+>
 > There are many things I don't like about Python, but one thing I love is the adherence to its famous principle:
 
 > There should be one -- and preferably only one -- obvious way to do it. -- julesjacobs
 
+I prefer Haskell to C++, Ruby because it is a better bridge between my brain and my goal.
+Being forced, and helped, to state things precisely and clarify assumptions up-front beats debugging. Debugging is the worst.
+How can we improve on tnis further?
+
+Things that suck:
+ * Debugging
+ * Package management
+ * Dependency management
+ * Build systems
+ * "Maintenance"
+
+Can we make them not suck, or at least suck less...?

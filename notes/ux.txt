@@ -10,6 +10,8 @@ one of the nice things about dynamic languages relative to static ones is that t
 even if in both a static and a dynamic lang, you can get to a working program in 30mins, at the 15mins point...
   dynamic language: my program starts running, does one of the things I want, and then crashes. it almost works!!!
   static language: the compiler was yelling at me about something, I tried to fix it, and now it's yelling at me about something else. will this ever work or am I just a terrible programmer?
+https://en.wikipedia.org/wiki/Programming_by_permutation
+In typical dynamic languages trial-and-error is easy, but gives bad results... typical static languages seek to discourage it entirely... we should strive for the advantages of both. Trial-and-error that works.
 
 be much more permissive in devel builds
   type errors are just warnings (-fdefer-type-errors)
@@ -121,6 +123,7 @@ What should our default non-integer type be??
       iow closed under arithmetic, roots, powers, logarithms, and trigonometry, and in/equality always decidable
         ...except it can't be closed under roots because then it's complex
         so we want... the same thing, minus the imaginary parts? :\
+      see also: https://hackage.haskell.org/package/exact-real-0.3.0.0/docs/Data-CReal.html
   What about for complex numbers?
     perhaps the default should be `Complex` which is a pair of rationals (or reals??)
     really wanting to avoid `Complex(T)` but probably not going to make it...
@@ -183,4 +186,22 @@ IDE should be as rich and graphical as possible, but should input/output text fi
 "So I guess nothing is going to happen. I wonder how we might design a programming language to manage the impact of library evolution. At the moment, we have no good way to say "I have noticed this change and updated my code, so stop warning me."."
 versioned imports and warnings??
 
+http://www.drmaciver.com/2015/07/a-wish-list/
 
+https://news.ycombinator.com/item?id=9808317 better error messages
+
+http://www.ccs.neu.edu/home/matthias/Thoughts/Growing_a_Programmer.html teaching
+
+@jonsterling Would love language-level support for generating execution traces (which is what printf debugging is)
+@cbarrett Yeah. Would also love some way to say, "print this when X gets called as a consequence of Y".
+@jonsterling exactly. Or "only after <term> was executed"
+
+http://package.elm-lang.org/help/design-guidelines
+
+TODO find Haskell blog post about which problems Nix solves (vs. Cabal) and which it doesn't (package compatibility, ...)
+
+"Transparency and Discoverability in production (mdb(1), DTrace, Erlang recon_trace and dbg) are more important than static typing." --jlouis666
+
+http://blog.ezyang.com/2015/12/the-convergence-of-compilers-build-systems-and-package-managers/
+
+https://github.com/rust-lang/rfcs/pull/1317 IDE support howto

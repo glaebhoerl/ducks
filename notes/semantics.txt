@@ -1,3 +1,226 @@
+UPPER VS. LOWERCASE, MODULES, ...
+  What property are we trying to uphold and why????
+  --
+  foo: (type T, ...)
+  let X = foo.T; // can you do this?
+  let x = foo.T; // what about this?
+  --
+  fn f(b: Bool) -> Type { if b { Int } else { Float } }
+  fn F(b: Bool) -> Type { if b { Int } else { Float } }
+  --
+  B: Bool
+  fn f(B: Bool) -> Type { if B { Int } else { Float } }
+  fn F(B: Bool) -> Type { if B { Int } else { Float } }
+  --
+  T: Type
+  X: T
+  (how come impredicativity and type-level constants seem to be entangled...?)
+  --
+  We don't want singleton `(type T = Int, combine: fn(T, T) -> T)` types like ML, only abstract `(type T, combine: fn(T, T) -> T)`
+    Factored out: `type Monoid = (type T, combine: fn(T, T) -> T)` and `Monoid where type T = Int`
+  Instead of ML's translucent types and signature matching (which requires subtyping), we want to write:
+    `type Monoid(T) = (combine: fn(T, T) -> T)` and `Monoid(Int)`
+    Where does this leave us at a disadvantage?
+  If we want to eschew subtyping entirely, that means we also need a different solution for being able to apply different signatures to the same module
+    Can this actually work with row polymorphism?
+  What happens if we make Names, Rows, and/or Effects first-class things which can be elements of records, just like "normal" types?
+  Distinction between data abstraction and type abstraction?
+    Data abstraction is a record where not all of the fields are exposed (private definitions)
+      This is private definitions in _modules_; private fields of _structs_ correspond to abstract types
+      Or does the below give us both? Seems like it might...
+      (There's not much algebraic/practical difference between an abstract type and a record type entirely consisting of an abstract row (struct with all fields private), but they are nonetheless different things?)
+    Corresponds to an existentially-quantified row?
+      let MyMod: (a: Int, ...) = (a Int, b Float, c Char);
+      (maybe some kind of `private` keyword that makes it _infer_ that way? or a different kind of record literal which inverts it and requires `public` to expose?)
+    And then I guess this would extend trivially to enumerations with existentially quantified rows as well ("private variants")... nice
+  What we essentially want: lowercase stuff is out of scope for uppercase stuff?
+    (And uppercase stuff is out of scope for lowercase, except on right of `:`?? cf pigworker System F oil/water)
+      no, that would mean we can't have modules (uppercase ones anyways) and access their lowercase components in terms...?
+      but if yes, does that mean we would have type-level constants...?
+        well, uppercase modules essentially _are_ type-level constants?
+        so the question is then only compile-time constants _of what types_...
+  How do we write a module exporting an abstract type? What about a module exporting a type synonym? Which is the easy one??
+    The default clearly has to be abstract(?), consider e.g. parametric polymorphic functions - they receive a type parameter as argument, and it is abstract
+    And in systems with translucent modules, `type T` (as opposed to `type T = Foo`) also means an abstract type
+    Questions:
+      * In systems with translucent modules, what do you actually _need_ `type T = Foo` for?
+        Instead of `(type T = Foo, foo: T)`, you can always write `(foo: Foo)`
+        To "forget" you can just extend the record with a `type T`, and existentially abstract it: `(type T, foo: T)`
+          This is nice, because it no longer involves subtyping
+        Sharing constraints... are handled by this kind of thing and/or parametrization-over-fibration?
+      * How do we export a type synonym? Why would we want to?
+        Relevant comparison: Rust modules and type aliases vs. abstract types, also consts and const fns?
+          `mod foo { const N: i32 = 5;         }` does the typechecker "know" that `N` is 5? (that's the whole point??)
+          `mod foo { const fn N() -> i32 { 5 } }` what about now? same deal?
+          `mod foo { type Foo = i32;           }` here everyone knows that `Foo = i32`
+          `mod foo { abstract type Foo = i32;  }` here only `foo` knows that `Foo = i32`
+        In each of the cases what is the "type" of `foo`? Does it matter?
+        How would we express each of the last two in Ducks?
+  What would `reflection` look like in this setting?
+    reify   :: forall a z. a -> (forall s. Reifies s a => Proxy s -> z) -> z
+    reflect :: forall s a. Reifies s a => proxy s -> a
+    fn reify(T: type, R: type, x: T, f: fn(X: T) -> R) -> R ??
+      IF this is OK... it essentially means we can instantiate uppercase parameters of lowercase functions with lowercase arguments???
+      How is this not dependent types??
+        Maybe because R should not contain uppercase stuff... or something?
+    what is the Haskell version actually _for_? making it be parametric? implicit passing?
+  Impredicativity + case-analysis (non-parametricity) is bad
+    We don't want typecase anyways, but what about for other uppercase things?
+    Can you compile-time branch on `B: Bool`?
+  In "ML Modules and Haskell Type Classes: A Constructive Comparison", associated types in `impl`s can be either `type` or `abstype`
+    what does that correspond to in Ducks?
+    what does "type abstraction in Haskell is performed inside instance (and not class) declarations" mean?
+  Possibilities:
+    * Lowercase stuff is out of scope for uppercase stuff
+    * Only uppercase stuff may appear to the right of `:`
+    * Uppercase stuff is "transparent to the typechecker" or "compile-time constant"
+    * Uppercase stuff is parametric
+  Boundary conditions: compositionality and modularity!
+  A fundamental issue is that (as currently formulated) function return types do _not_ have capitalization
+    So we _can't_ say "uppercase outputs may only depend on uppercase inputs", because we don't know when the output is uppercase!
+    (And we can't infer it from use sites without destroying modularity)
+    What can we do:
+      * `Type` is inherently uppercase and other types aren't (what about functions and records, and generic return types??)
+      * We add a way to signify the capitalization, and/or functions may only return records (which then have upper- and lowercase components)
+      * The capitalization of the return type is signified by the capitalization of the _function_
+          but what about lambdas?
+          is this logically consistent with the universal meaning of uppercase, as applied to the function itself as a value??
+            "runtime function which is known at compile-time" (`const FOO: fn()`) vs. "compile-time function" (`const fn FOO()`)
+            are these different things??? how is this different for functions than like, Ints?
+            (the value of an Int is a number... the value of a function is its body, isn't it? what does it mean to know a function at compile time but not its body??)
+      * We figure out a way to make it not matter, and impose restrictions directly+only on uppercase arguments (values) and/or functions
+  Taking the last one: what if we take "uppercase values must be handled parametrically" as the starting point?
+    What _concrete_ restrictions does that imply?
+      `fn(T: Type, x: T, y: T) -> T` is isomorphic to `Bool`
+      so... can we not apply it??
+    What further restrictions are necessary to achieve our aims?
+    if `fn(A: Foo, a: Foo) -> Foo` can return either one, that definitely destroys any notion of "uppercase variables can't be instantiated by lowercase stuff"
+      can anything still be saved? what do we want to save?
+  "opaque" vs. "transparent"
+  for meaning of uppercase things, are we conflating big/small (universes) with transparent/opaque?
+  "normal value level things" are always "opaque" -> intuition that lowercase should be opaque, uppercase transparent?
+    fn f(X) --> `X` should be opaque to `f`
+    fn F(X) --> `X` should be transparent to `F`
+    ?
+    but what does transparency even imply in this context?
+    above we said "uppercase should be parametric", here we say "uppercase should be transparent"... these are direct opposites!!
+  opacity vs. transparency only matters at the type level, because it determines whether or not we can infer two types to be the same...
+  there's no static checking of this sort for the value level, naturally
+  and maybe reflecting values to the type level is OK as long as it's opaque?
+  maybe: "lowercase things should be opaque to uppercase things"? (what about vice versa...??)
+  --
+  new questions after 1ML:
+    what does dependency mean? how does 1ML avoid it? fn bool -> type { case of ... } ??
+    purity vs. value-ability (Dreyer)
+    what if 1ML had constants?
+    pure vs. transparent typedefs
+
+TYPE INFERENCE
+  the classic MLF example `choose id`
+    can be given two System F types
+      forall a. (a -> a) -> (a -> a)
+      (forall a. a -> a) -> (forall a. a -> a)
+    and the MLF type
+      forall (b >= forall a. a -> a). b -> b
+    which can be instantiated to either of the previous.
+  can we express that with Ducks types? (are Ducks types just System F-like, or more than that?)
+    if >= is something like a subtyping relation, can we use a function instead...?
+    System F types:
+      fn(T: Type) -> fn(fn(T) -> T) -> fn(T) -> T
+      (fn(T: Type) -> fn(T) -> T) -> (fn(T: Type) -> fn(T) -> T)
+    MLF type:
+      fn(B: ??? fn(T: Type) -> fn(T) -> T) -> fn(B) -> B
+      B is a supertype of ...
+      we need a function that can either instantiate the `T`, or leave it unchanged
+  "higher-order (pattern) unification"?
+  "Partial polymorphic type inference and higher-order unification"?
+  "unification-based type inference does not have a direction and this places severe constraints on how your lang can look like"
+  "for example, if your + operator casts operands to widest type of both, it will inevitably require annotations"
+  "every time you introduce an implicit cast you prevent inference from flowing in either direction across the cast" -- whitequark
+
+AD-HOC POLYMORPHISM, OVERLOADING
+  important part: be able to declare abstract interfaces, overload based on them (not just "best matching signature" a la C++)
+  one potentially key difference vs. MTC/MI is that we have Monoid(Int), not Monoid where T=Int
+  "T type class is an addictive, unprincipled, global, piecewise-defined, implicitly-applied partial function from types to a record." - right
+    can we maybe use type-level structural variants for this actually somehow...?
+  Dreyer, Why Applicative Functors Matter:
+    > Treat projection from a functor as a composition of projection and the functor: F.l := (.l) o F
+    > “MkSet.insert” = λ(X : ORD). MkSet(X).insert
+    > “MkSet.t” = λ(X : ORD). MkSet(X).t
+    > For MkSet.t, argument cannot be inferred
+    > Projection and application of a functor commute: F(M).l = F.l(M)
+    But of course: this is just like `for<T> { ... }`, a.k.a. an item in a polymorphic module ~ a polymorphic item
+  http://www.haskellforall.com/2015/10/explicit-is-better-than-implicit.html
+
+DATA-GENERIC STUFF
+  what's our answer to `deriving`?
+  enable writing implementations generically over records/enumerations?
+    so it's "automatically available" for structural algebraic types based on their components
+    abstract types can just re-expose it
+  where does this approach fall short - what's the kind of thing where GHC.Generics isn't good enough and you really need Template Haskell? (data-generic vs. macros)
+  to make this really work we need to enable explicit(?) polymorphism over _everything_ - names, effects, rows, ...?
+
+everything-is-a-record vs. mutability of individual variables / arguments
+  fn foo(mut x: Int) and fn foo(x: mut Ref(Int)) are manifestly distinct
+  how does `let mut foo = 5` translate into a record field?
+  do we even have `let`s? or just `name value`?
+
+everything-is-a-record vs. the stack
+  interesting case: closures
+  here the closure (fn) sees _three_ "records":
+    its arguments, its local variables, and the outer environment
+  how are these combined/coalesced/concatenated/cowhatevered?
+
+"We must pass offsets at runtime for constant time field access. Of course, the CPU already carries this offset for us: it's the stack register, and the environment is the stack. Record extension is thus pushing a stack frame, and record selection is accessing a stack variable."
+
+
+is the kind of functions `(Effect, Type) -> Type` or `(Effect, Row) -> Type`?
+  latter seems more appealing?
+
+
+how to handle the tension between FFI and concurrency?
+  for one thing, stacks
+  and sending closures between processes
+    if it closes over FFI pointers, that won't work
+    but tracking which closures (which existential types) are sendable at the type level is painful at a minimum
+    compromise: allow runtime test for sendability on any type / closure?
+      "worse is better" :/
+    or maybe: `extern fn` as the type of not just foreign functions, but any functions which are, or close over, foreign data?
+      iow, `extern` is an effect in its own right
+      this smells like the right "better is better" approach...
+      ...but it seems like a painfully awkward world-split if everything has to keep type-track of whether it interacts with FFI
+        another thing that would be like this is `trusted fn`
+      (which split however _does_ reflect fundamentals in that you could do things with pure Ducks stuff that you just can't with foreign ones...)
+      how much of the pain would be alleviated by effect polymorphism?
+    also, how would we even express "a non-`extern` thing" (!extern) if effects are also row-based...?
+      you can only express the presence, not the absence, of an effect...?
+
+if rows are first-class and have many "consumers" - struct, enum, fn, Table, ..
+  .. how do type components work?
+  struct(type T, x: T)
+    this is clear enough
+  enum(type T, x: T)
+    this makes no sense _whatsoever_
+    but does that mean we need to forbid it, or merely that it's not useful?
+  Table(type T, x: T)
+    ???
+    this would require equality-testing on types...? (to be a relation, rather than a multiset-thing)
+  maybe there's a difference between "lowercase rows" and "uppercase rows" - only the latter can have type components?
+    or rather, only uppercase rows can contain uppercase things
+  is there anything besides structs and fns that _can_ handle uppercase rows?
+    (various functor-combinators derived from them, like EitherF/BothF/ComposeF?)
+    any other _primitives_?
+    hashmap implementations of records -- same semantics, just optimized for large records, updates, and sharing?
+      (can we do this phase transition automatically...?)
+    the map-over-rows stuff for first-class pattern matching thingie also doesn't make sense over types...
+      but conveniently, type components in enums don't make sense anyway
+      an existential enum is an enum inside a dependent struct!
+      so it seemingly makes sense to restrict map-over-rows to lowercase rows
+
+"A functor is applicative if and only if its body is a provably pure module expression, otherwise it is generative. Likewise, sealing is weak (in the parlance of Dreyer et al. [1]) if and only if it seals a pure module, and strong otherwise. Moreover, there is a natural subtyping relation between pure and impure functor signatures." -- F-ing applicative functors
+TODO look into the second two things!!
+
+
 effect-typed data for mutability polymorphism
   syntactically effect arguments are adjectives preceding the type name, e.g. `pure HashMap`, `mut HashMap`
   read-only methods are effect-polymorphic, mutating methods require a `mut HashMap`
@@ -548,222 +771,6 @@ How does every-thing-is-a-record-containing-functions-and-types fit in with row 
   For enumerations, we'd want RP when it's in the return type??
   Does row polymorphism give us signature matching??
 
-UPPER VS. LOWERCASE, MODULES, ...
-  What property are we trying to uphold and why????
-  --
-  foo: (type T, ...)
-  let X = foo.T; // can you do this?
-  let x = foo.T; // what about this?
-  --
-  fn f(b: Bool) -> Type { if b { Int } else { Float } }
-  fn F(b: Bool) -> Type { if b { Int } else { Float } }
-  --
-  B: Bool
-  fn f(B: Bool) -> Type { if B { Int } else { Float } }
-  fn F(B: Bool) -> Type { if B { Int } else { Float } }
-  --
-  T: Type
-  X: T
-  (how come impredicativity and type-level constants seem to be entangled...?)
-  --
-  We don't want singleton `(type T = Int, combine: fn(T, T) -> T)` types like ML, only abstract `(type T, combine: fn(T, T) -> T)`
-    Factored out: `type Monoid = (type T, combine: fn(T, T) -> T)` and `Monoid where type T = Int`
-  Instead of ML's translucent types and signature matching (which requires subtyping), we want to write:
-    `type Monoid(T) = (combine: fn(T, T) -> T)` and `Monoid(Int)`
-    Where does this leave us at a disadvantage?
-  If we want to eschew subtyping entirely, that means we also need a different solution for being able to apply different signatures to the same module
-    Can this actually work with row polymorphism?
-  What happens if we make Names, Rows, and/or Effects first-class things which can be elements of records, just like "normal" types?
-  Distinction between data abstraction and type abstraction?
-    Data abstraction is a record where not all of the fields are exposed (private definitions)
-      This is private definitions in _modules_; private fields of _structs_ correspond to abstract types
-      Or does the below give us both? Seems like it might...
-      (There's not much algebraic/practical difference between an abstract type and a record type entirely consisting of an abstract row (struct with all fields private), but they are nonetheless different things?)
-    Corresponds to an existentially-quantified row?
-      let MyMod: (a: Int, ...) = (a Int, b Float, c Char);
-      (maybe some kind of `private` keyword that makes it _infer_ that way? or a different kind of record literal which inverts it and requires `public` to expose?)
-    And then I guess this would extend trivially to enumerations with existentially quantified rows as well ("private variants")... nice
-  What we essentially want: lowercase stuff is out of scope for uppercase stuff?
-    (And uppercase stuff is out of scope for lowercase, except on right of `:`?? cf pigworker System F oil/water)
-      no, that would mean we can't have modules (uppercase ones anyways) and access their lowercase components in terms...?
-      but if yes, does that mean we would have type-level constants...?
-        well, uppercase modules essentially _are_ type-level constants?
-        so the question is then only compile-time constants _of what types_...
-  How do we write a module exporting an abstract type? What about a module exporting a type synonym? Which is the easy one??
-    The default clearly has to be abstract(?), consider e.g. parametric polymorphic functions - they receive a type parameter as argument, and it is abstract
-    And in systems with translucent modules, `type T` (as opposed to `type T = Foo`) also means an abstract type
-    Questions:
-      * In systems with translucent modules, what do you actually _need_ `type T = Foo` for?
-        Instead of `(type T = Foo, foo: T)`, you can always write `(foo: Foo)`
-        To "forget" you can just extend the record with a `type T`, and existentially abstract it: `(type T, foo: T)`
-          This is nice, because it no longer involves subtyping
-        Sharing constraints... are handled by this kind of thing and/or parametrization-over-fibration?
-      * How do we export a type synonym? Why would we want to?
-        Relevant comparison: Rust modules and type aliases vs. abstract types, also consts and const fns?
-          `mod foo { const N: i32 = 5;         }` does the typechecker "know" that `N` is 5? (that's the whole point??)
-          `mod foo { const fn N() -> i32 { 5 } }` what about now? same deal?
-          `mod foo { type Foo = i32;           }` here everyone knows that `Foo = i32`
-          `mod foo { abstract type Foo = i32;  }` here only `foo` knows that `Foo = i32`
-        In each of the cases what is the "type" of `foo`? Does it matter?
-        How would we express each of the last two in Ducks?
-  What would `reflection` look like in this setting?
-    reify   :: forall a z. a -> (forall s. Reifies s a => Proxy s -> z) -> z
-    reflect :: forall s a. Reifies s a => proxy s -> a
-    fn reify(T: type, R: type, x: T, f: fn(X: T) -> R) -> R ??
-      IF this is OK... it essentially means we can instantiate uppercase parameters of lowercase functions with lowercase arguments???
-      How is this not dependent types??
-        Maybe because R should not contain uppercase stuff... or something?
-    what is the Haskell version actually _for_? making it be parametric? implicit passing?
-  Impredicativity + case-analysis (non-parametricity) is bad
-    We don't want typecase anyways, but what about for other uppercase things?
-    Can you compile-time branch on `B: Bool`?
-  In "ML Modules and Haskell Type Classes: A Constructive Comparison", associated types in `impl`s can be either `type` or `abstype`
-    what does that correspond to in Ducks?
-    what does "type abstraction in Haskell is performed inside instance (and not class) declarations" mean?
-  Possibilities:
-    * Lowercase stuff is out of scope for uppercase stuff
-    * Only uppercase stuff may appear to the right of `:`
-    * Uppercase stuff is "transparent to the typechecker" or "compile-time constant"
-    * Uppercase stuff is parametric
-  Boundary conditions: compositionality and modularity!
-  A fundamental issue is that (as currently formulated) function return types do _not_ have capitalization
-    So we _can't_ say "uppercase outputs may only depend on uppercase inputs", because we don't know when the output is uppercase!
-    (And we can't infer it from use sites without destroying modularity)
-    What can we do:
-      * `Type` is inherently uppercase and other types aren't (what about functions and records, and generic return types??)
-      * We add a way to signify the capitalization, and/or functions may only return records (which then have upper- and lowercase components)
-      * The capitalization of the return type is signified by the capitalization of the _function_
-          but what about lambdas?
-          is this logically consistent with the universal meaning of uppercase, as applied to the function itself as a value??
-            "runtime function which is known at compile-time" (`const FOO: fn()`) vs. "compile-time function" (`const fn FOO()`)
-            are these different things??? how is this different for functions than like, Ints?
-            (the value of an Int is a number... the value of a function is its body, isn't it? what does it mean to know a function at compile time but not its body??)
-      * We figure out a way to make it not matter, and impose restrictions directly+only on uppercase arguments (values) and/or functions
-  Taking the last one: what if we take "uppercase values must be handled parametrically" as the starting point?
-    What _concrete_ restrictions does that imply?
-      `fn(T: Type, x: T, y: T) -> T` is isomorphic to `Bool`
-      so... can we not apply it??
-    What further restrictions are necessary to achieve our aims?
-    if `fn(A: Foo, a: Foo) -> Foo` can return either one, that definitely destroys any notion of "uppercase variables can't be instantiated by lowercase stuff"
-      can anything still be saved? what do we want to save?
-  "opaque" vs. "transparent"
-  for meaning of uppercase things, are we conflating big/small (universes) with transparent/opaque?
-  "normal value level things" are always "opaque" -> intuition that lowercase should be opaque, uppercase transparent?
-    fn f(X) --> `X` should be opaque to `f`
-    fn F(X) --> `X` should be transparent to `F`
-    ?
-    but what does transparency even imply in this context?
-    above we said "uppercase should be parametric", here we say "uppercase should be transparent"... these are direct opposites!!
-  opacity vs. transparency only matters at the type level, because it determines whether or not we can infer two types to be the same...
-  there's no static checking of this sort for the value level, naturally
-  and maybe reflecting values to the type level is OK as long as it's opaque?
-  maybe: "lowercase things should be opaque to uppercase things"? (what about vice versa...??)
-
-TYPE INFERENCE
-  the classic MLF example `choose id`
-    can be given two System F types
-      forall a. (a -> a) -> (a -> a)
-      (forall a. a -> a) -> (forall a. a -> a)
-    and the MLF type
-      forall (b >= forall a. a -> a). b -> b
-    which can be instantiated to either of the previous.
-  can we express that with Ducks types? (are Ducks types just System F-like, or more than that?)
-    if >= is something like a subtyping relation, can we use a function instead...?
-    System F types:
-      fn(T: Type) -> fn(fn(T) -> T) -> fn(T) -> T
-      (fn(T: Type) -> fn(T) -> T) -> (fn(T: Type) -> fn(T) -> T)
-    MLF type:
-      fn(B: ??? fn(T: Type) -> fn(T) -> T) -> fn(B) -> B
-      B is a supertype of ...
-      we need a function that can either instantiate the `T`, or leave it unchanged
-  "higher-order (pattern) unification"?
-  "Partial polymorphic type inference and higher-order unification"?
-  "unification-based type inference does not have a direction and this places severe constraints on how your lang can look like"
-  "for example, if your + operator casts operands to widest type of both, it will inevitably require annotations"
-  "every time you introduce an implicit cast you prevent inference from flowing in either direction across the cast" -- whitequark
-
-AD-HOC POLYMORPHISM, OVERLOADING
-  important part: be able to declare abstract interfaces, overload based on them (not just "best matching signature" a la C++)
-  one potentially key difference vs. MTC/MI is that we have Monoid(Int), not Monoid where T=Int
-  "T type class is an addictive, unprincipled, global, piecewise-defined, implicitly-applied partial function from types to a record." - right
-    can we maybe use type-level structural variants for this actually somehow...?
-  Dreyer, Why Applicative Functors Matter:
-    > Treat projection from a functor as a composition of projection and the functor: F.l := (.l) o F
-    > “MkSet.insert” = λ(X : ORD). MkSet(X).insert
-    > “MkSet.t” = λ(X : ORD). MkSet(X).t
-    > For MkSet.t, argument cannot be inferred
-    > Projection and application of a functor commute: F(M).l = F.l(M)
-    But of course: this is just like `for<T> { ... }`, a.k.a. an item in a polymorphic module ~ a polymorphic item
-  http://www.haskellforall.com/2015/10/explicit-is-better-than-implicit.html
-
-DATA-GENERIC STUFF
-  what's our answer to `deriving`?
-  enable writing implementations generically over records/enumerations?
-    so it's "automatically available" for structural algebraic types based on their components
-    abstract types can just re-expose it
-  where does this approach fall short - what's the kind of thing where GHC.Generics isn't good enough and you really need Template Haskell? (data-generic vs. macros)
-  to make this really work we need to enable explicit(?) polymorphism over _everything_ - names, effects, rows, ...?
-
-everything-is-a-record vs. mutability of individual variables / arguments
-  fn foo(mut x: Int) and fn foo(x: mut Ref(Int)) are manifestly distinct
-  how does `let mut foo = 5` translate into a record field?
-  do we even have `let`s? or just `name value`?
-
-everything-is-a-record vs. the stack
-  interesting case: closures
-  here the closure (fn) sees _three_ "records":
-    its arguments, its local variables, and the outer environment
-  how are these combined/coalesced/concatenated/cowhatevered?
-
-"We must pass offsets at runtime for constant time field access. Of course, the CPU already carries this offset for us: it's the stack register, and the environment is the stack. Record extension is thus pushing a stack frame, and record selection is accessing a stack variable."
-
-
-is the kind of functions `(Effect, Type) -> Type` or `(Effect, Row) -> Type`?
-  latter seems more appealing?
-
-
-how to handle the tension between FFI and concurrency?
-  for one thing, stacks
-  and sending closures between processes
-    if it closes over FFI pointers, that won't work
-    but tracking which closures (which existential types) are sendable at the type level is painful at a minimum
-    compromise: allow runtime test for sendability on any type / closure?
-      "worse is better" :/
-    or maybe: `extern fn` as the type of not just foreign functions, but any functions which are, or close over, foreign data?
-      iow, `extern` is an effect in its own right
-      this smells like the right "better is better" approach...
-      ...but it seems like a painfully awkward world-split if everything has to keep type-track of whether it interacts with FFI
-        another thing that would be like this is `trusted fn`
-      (which split however _does_ reflect fundamentals in that you could do things with pure Ducks stuff that you just can't with foreign ones...)
-      how much of the pain would be alleviated by effect polymorphism?
-    also, how would we even express "a non-`extern` thing" (!extern) if effects are also row-based...?
-      you can only express the presence, not the absence, of an effect...?
-
-if rows are first-class and have many "consumers" - struct, enum, fn, Table, ..
-  .. how do type components work?
-  struct(type T, x: T)
-    this is clear enough
-  enum(type T, x: T)
-    this makes no sense _whatsoever_
-    but does that mean we need to forbid it, or merely that it's not useful?
-  Table(type T, x: T)
-    ???
-    this would require equality-testing on types...? (to be a relation, rather than a multiset-thing)
-  maybe there's a difference between "lowercase rows" and "uppercase rows" - only the latter can have type components?
-    or rather, only uppercase rows can contain uppercase things
-  is there anything besides structs and fns that _can_ handle uppercase rows?
-    (various functor-combinators derived from them, like EitherF/BothF/ComposeF?)
-    any other _primitives_?
-    hashmap implementations of records -- same semantics, just optimized for large records, updates, and sharing?
-      (can we do this phase transition automatically...?)
-    the map-over-rows stuff for first-class pattern matching thingie also doesn't make sense over types...
-      but conveniently, type components in enums don't make sense anyway
-      an existential enum is an enum inside a dependent struct!
-      so it seemingly makes sense to restrict map-over-rows to lowercase rows
-
-"A functor is applicative if and only if its body is a provably pure module expression, otherwise it is generative. Likewise, sealing is weak (in the parlance of Dreyer et al. [1]) if and only if it seals a pure module, and strong otherwise. Moreover, there is a natural subtyping relation between pure and impure functor signatures." -- F-ing applicative functors
-TODO look into the second two things!!
-
 rewrite rules -> equality saturation? https://www.reddit.com/r/haskell/comments/2g6wsx/haskell_for_all_morte_an_intermediate_language/ckgevdt
 
 strictness is the right default because:
@@ -809,3 +816,8 @@ taking to row polymorphism lesson to scoped mutability:
   effect subtyping -> effect rows
   region subtyping -> region rows?
   or does this just fall out of effect rows?
+
+push     vs pull (streaming... also FRP?)
+internal vs external iterators
+strict   vs lazy?
+http://joeduffyblog.com/2015/11/19/asynchronous-everything/

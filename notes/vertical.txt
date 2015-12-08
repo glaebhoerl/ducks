@@ -19,6 +19,7 @@ What else? Is there any "general" or "logic" thing separate from or "above" all 
       ...what's the difference between an ECS and a RDBMS?
       http://gamedev.stackexchange.com/questions/40212/actually-utilizing-relational-databases-for-entity-systems
       https://hackage.haskell.org/package/DSH
+      http://gamesfromwithin.com/data-oriented-design
   Logic programming?
   Category theory, math?
   Who will be using this? Mathematicians? Haskell programmers? Web developers? New programmers?
@@ -184,5 +185,11 @@ http://zrho.me/posts/2015-08-23-optic-ui.html
   can we adapt this to our structural records / enumerations?
   (depends on the "how do we do lensy stuff" question...)
 
-
 perhaps the 'package repository' could also be a single big graph of records...?
+
+Rant against relational databases (e.g. can't express transitive closures with finite number of joins)
+http://www.pipeline.com/~hbaker1/letters/CACM-RelationalDatabases.html
+
+"dependency management is probably the biggest hidden cost of SW"
+"People complain about NIH, but what happens when a maintainer falls out of sight? A company either needs to maintain the code themselves, or
+…some form of community maintainership is necessary." -- jonsterling

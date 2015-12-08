@@ -187,5 +187,7 @@ Stacks are represented as cactus stack of records?
   we can avoid a performance cliff for "vanilla" non-fancy code (that mostly just uses the stack in C-like ways) with:
     bump-pointer allocation
   what about not-yet-initialized and mutable variables??
-
       allocating stack frames into a compact region? (so now they're adjacent like in a C stack, only diff is the overhead of a back-pointer per frame)
+
+Swift type metadata layout
+https://github.com/apple/swift/blob/master/docs/ABI.rst

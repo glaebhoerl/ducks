@@ -1,8 +1,16 @@
-=== LANGUAGE SUMMARY ===
+=== BIG PICTURE ===
+
+ * Fully structural type system
+ * All name resolution is just record field access
+ * Types first-class
+ * Abstraction, data, control
+ * Pure and strict, but better support for laziness than OCaml, and better support for mutation than Haskell
+
+=== BIGGER PICTURE ===
 
  * First-class records and variants (structs/enums, w/e) with duplicate labels (a la Leijen)
    (Actual structure is like record-of-tuples)
- * First-class functions with effect types and effect polymorphism 
+ * First-class functions with effect types and effect polymorphism
    Minimal distinction: pure vs impure
    Probably wired in: io (globally observable mutation), mut (local mutation), atomic (STM)
  * Functions take single record as arguments => named parameters everywhere (with same internal+external name)
@@ -17,6 +25,7 @@
  * "Parameterization over fibration"
    `type Monoid(T) = (mempty: T, mappend: fn(T, T) -> T)` and `Monoid(Int)`
    instead of: `type Monoid = (type T, mempty: T, mappend: fn(T, T) -> T)` and `Monoid where type T = Int`
+   in general, avoid having `=` signs at the type level
  * Expressions infer as values (effects "escape" into the outer scope), also check as closures (effects captured)
  * Nullary pure functions are memoized -> "call-by-need"
  * Effect-typed data for mutability polymorphism
@@ -29,7 +38,6 @@
 
  * duplication
  * dependent types
- * `=` in types
  * subtyping
  * macros
  * data races
@@ -44,7 +52,7 @@
  * Data-generic stuff
  * Threading/concurrency model
  * Pattern matching, first-class patterns / pattern synonyms, ...
- * Memory management
+ * Memory management strategy (GC and/or RC and/or region inference)
 
 === STATUS ===
 
@@ -58,10 +66,14 @@ TOREAD:
   1ML
   MLF, BiDi
   First-class labels
+  "System Fω with Equirecursive Types for Datatype-generic Programming"
   LMS?
   Prolog, Datalog? (Curry?)
+
+Other languages:
   Shen? "The way Shen's pattern-matching, functions, reader macros, Prolog, type system and compiler-compiler all work together is a thing of beauty."
   http://mythryl.org/
+  Dylan? Elixir? Mezzo?
 
 Implement an existing language first to get experience?
   STLC, System F, System Fomega...
@@ -73,8 +85,6 @@ Implement an existing language first to get experience?
 1ML: Core and modules united (F-ing first class modules)
 Extensible records with scoped labels
 Out of the Tar Pit
-Abstraction without regret in database systems building - a manifesto 
+Abstraction without regret in database systems building - a manifesto
 -
-? [TODO] System Fω with Equirecursive Types for Datatype-generic Programming
-
 

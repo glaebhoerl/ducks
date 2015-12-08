@@ -8,6 +8,14 @@ QUESTIONS
     still awful, but...
     (method calls are the special thing so it would be nice if they had the special syntax instead, but the whole point is that we want both `foo.bar` and `foo.bar()` to be like in other languages, so really it's everyone else's fault :\)
     problem: not what we want for modules! `Map.insert()` should be `{Map.insert}()`, not `insert(Map)`!
+  so maybe vice versa:
+    `a.b` is field access, `a->b()` is method call
+  other possibility:
+    `a/b` is field access, `a.b()` is method call
+    filesystem analogy
+    this is great for modules, but not so much for structs
+    strains the language weirdness budget
+    and now plain `a.foo` doesn't have any meaning?
   if we remove normal function calls f(a, b) entirely:
     foo.bar is field access
     foo.bar() is unary method call, foo.bar(baz) is binary
@@ -80,10 +88,12 @@ informal language & naming
   mutable/immutable -> read-only/read-write? (mut -> rw? const -> ro? eh :\)
   row -> ? ("args"? "types"? "glob"? "pack"? what else do languages call these...? environment?)
   getter-setterish pairs:
-    get     + set   -> single-valued cell  : IORef
-    read    + write -> synchronous stream  : File
-    take    + put   -> nullable cell?      : Ref(Maybe), MVar
-    receive + send  -> asynchronous stream : Socket, Channel...
+    get     + set   -> single-valued cell   (IORef)
+    read    + write -> synchronous stream   (File)
+    take    + put   -> nullable cell?       (Ref(Maybe), MVar)
+    receive + send  -> asynchronous stream  (Socket, Channel...)
+    what about Index/IndexMut?
+  type -> interface, term -> implementation (??)
 
 
 misc syntax
@@ -106,6 +116,9 @@ misc syntax
     `let (x, y) = foo` a la Rust?f
     `import x, y from foo`?
       `import foo.(x, y)`?
+    if we also want to allow deconstructing assignment, the `let`s should be inside the pattern!!
+      `(let x, let y) = foo`!
+      then you can also express: `(x, y) = foo`, and hybrid `(let x, y) = foo`, `(x, let y) = foo`!
     what about construction vs. matching duality (incl. fn named args) and renaming?
       `let (x as myX, y as myY) = foo`
       `foo(x myX, y myY)` OR `foo(myX as x, myY as y)`?
@@ -170,7 +183,7 @@ misc syntax
   passive voice for non-destructive/non-effectful, active voice for destructive/effectful functions
     e.g. `let list = list.sorted()`; `list.sort()`
   syntax for holes: `TODO`? :) (should they have names though?)
-  if semicolons are optional, how do we explicitly ignore a return value? .ignore()? .discard()? .unused()? anything shorter? .whatever()? :)
+  if semicolons are optional, how do we explicitly ignore a return value? .ignore()? .discard()? .unused()? anything shorter? .whatever()? .whoCares()? :)
   "functional update syntax" for dicts and arrays analogously to records?
   instead of numeric literal suffixes: a . indicates Float, presence of +/- means Int, otherwise UInt?
   #cfg -> #if?
@@ -250,3 +263,5 @@ implicit generics parameters, similarly to lifetime elision in Rust...?
 
 Just have operators be aliases for functions of a particular name - i.e. desugars even before name resolution?
   a + b ==> add(a, b); then look for `add`
+
+"Also, the string interpolation Swift does is nice. That’s one thing I really wish Rust had. It’s Python-style string formatting macro is great, but being able to interpolate values ("strings with \(variables)" or even "embedded expressions like \(2 + 4)") is very nice."
